@@ -4,9 +4,11 @@ import sys
 
 from PySide6.QtWidgets import QApplication
 
+import worldsmith.aaa as aaa_module
 import worldsmith.app as app_module
-from worldsmith.aaa import AAAWorldSmithWindow, LiveWorldPreview
+from worldsmith.aaa import AAAWorldSmithWindow
 from worldsmith.assets.appearance import BlockAppearanceCache
+from worldsmith.assets.textured_preview import TexturedLiveWorldPreview
 from worldsmith.async_build import build_plan_async
 from worldsmith.generation.advanced_builder import AdvancedWorldBuilder
 
@@ -14,9 +16,10 @@ from worldsmith.generation.advanced_builder import AdvancedWorldBuilder
 app_module.WorldBuilder = AdvancedWorldBuilder
 AAAWorldSmithWindow.build_plan = build_plan_async
 
-# Use locally installed Minecraft/resource-pack assets for viewport appearance when available.
+# Use locally installed Minecraft/resource-pack assets in the AAA live viewport.
+aaa_module.LiveWorldPreview = TexturedLiveWorldPreview
 _appearance_cache = BlockAppearanceCache()
-LiveWorldPreview._material_color = staticmethod(lambda material: _appearance_cache.resolve(material).color)
+TexturedLiveWorldPreview._material_color = staticmethod(lambda material: _appearance_cache.resolve(material).color)
 
 
 def main() -> int:
