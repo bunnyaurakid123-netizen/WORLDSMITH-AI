@@ -28,23 +28,28 @@ class Selection:
 class VoxelEditor:
     """User-facing voxel editing operations backed by one undo/redo history."""
 
+    MAX_SELECTION_VOLUME = 250_000
+
     def __init__(self, level, dimension: str = "minecraft:overworld", history_limit: int = 100):
         self.adapter = AmuletAdapter(level, dimension)
         self.history = EditHistory(self.adapter, history_limit)
         self.selection: Selection | None = None
 
     def select(self, selection: Selection) -> Selection:
-        self.selection = selection.normalized
+        normalized = selection.normalized
+        if normalized.volume > self.MAX_SELECTION_VOLUME:
+            raise ValueError(f"Selection is too large: {normalized.volume:,} blocks > {self.MAX_SELECTION_VOLUME:,}")
+        self.selection = normalized
         return self.selection
 
     def _transaction(self) -> EditTransaction:
         return EditTransaction(self.adapter)
 
     def block(self, name: str) -> BlockState:
-        import amulet
+        from amulet.api.block import Block
         identifier = Palette.resolve(name)
         namespace, base = identifier.split(":", 1)
-        return BlockState(amulet.api.block.Block(namespace, base))
+        return BlockState(Block(namespace, base))
 
     def fill_selection(self, block: str) -> BrushResult:
         if self.selection is None:
@@ -65,12 +70,14 @@ class VoxelEditor:
         return result
 
     def sphere_at(self, center: tuple[int, int, int], radius: int, block: str) -> BrushResult:
+        radius = max(1, min(int(radius), 32))
         tx = self._transaction()
         result = sphere(tx, *center, radius, self.block(block))
         self.history.commit(tx)
         return result
 
     def cylinder_at(self, center: tuple[int, int, int], radius: int, height: int, block: str) -> BrushResult:
+        radius = max(1, min(int(radius), 32)); height = max(1, min(int(height), 64))
         tx = self._transaction()
         result = cylinder(tx, center[0], center[1], center[2], radius, height, self.block(block))
         self.history.commit(tx)
