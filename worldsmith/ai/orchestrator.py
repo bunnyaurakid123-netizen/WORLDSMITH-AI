@@ -26,7 +26,8 @@ Schema:
     "mountain_height": int,
     "roughness": number,
     "water": bool,
-    "vegetation": bool
+    "vegetation": bool,
+    "caves": bool
   },
   "builds": [
     {"type":string,"x":int,"y":int,"z":int,"width":int,"depth":int,"height":int,"style":string,"interior":bool,"redstone":bool}
@@ -68,7 +69,7 @@ def built_in_plan(prompt, center=(0, 100, 0), radius=96):
         "style": "cinematic natural fantasy",
         "seed": 1337,
         "center": [x, y, z],
-        "terrain": {"enabled": True, "radius": radius, "mountain_height": 80, "roughness": 1.0, "water": True, "vegetation": True},
+        "terrain": {"enabled": True, "radius": radius, "mountain_height": 80, "roughness": 1.0, "water": True, "vegetation": True, "caves": True},
         "builds": [
             {"type": "castle", "x": x, "y": y + 3, "z": z, "width": 31, "depth": 31, "height": 28, "style": "stone spruce medieval", "interior": True, "redstone": True},
             {"type": "village", "x": x + 42, "y": y + 3, "z": z + 28, "width": 21, "depth": 21, "height": 10, "style": "spruce medieval", "interior": True, "redstone": False},
@@ -94,17 +95,19 @@ class Ensemble:
                 activity(message)
 
         prompt = SYSTEM_PROMPT + "\nWORLD CONTEXT:\n" + context[:12000] + "\nUSER REQUEST:\n" + user_prompt
+        reasoning = self.settings.ai_reasoning
         jobs = {}
         emit("Analyzing request, world context and long-term memory…")
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
             if self.settings.openai_key:
-                emit(f"OpenAI • generating candidate with {self.settings.openai_model}")
-                jobs[pool.submit(call_openai, self.settings.openai_key, self.settings.openai_model, prompt)] = "openai"
+                emit(f"OpenAI • generating candidate with {self.settings.openai_model} • reasoning={reasoning}")
+                jobs[pool.submit(call_openai, self.settings.openai_key, self.settings.openai_model, prompt, reasoning)] = "openai"
             else:
                 emit("OpenAI • skipped (no key configured)")
             if self.settings.gemini_key:
-                emit(f"Gemini • generating candidate with {self.settings.gemini_model}")
-                jobs[pool.submit(call_gemini, self.settings.gemini_key, self.settings.gemini_model, prompt)] = "gemini"
+                gemini_reasoning = reasoning if str(reasoning).lower() in {"low", "medium", "high"} else "high"
+                emit(f"Gemini • generating candidate with {self.settings.gemini_model} • thinking={gemini_reasoning}")
+                jobs[pool.submit(call_gemini, self.settings.gemini_key, self.settings.gemini_model, prompt, gemini_reasoning)] = "gemini"
             else:
                 emit("Gemini • skipped (no key configured)")
             emit(f"Ollama • generating candidate with {self.settings.ollama_model}")
@@ -132,8 +135,11 @@ class Ensemble:
         judge_prompt = SYSTEM_PROMPT + "\nYou are the WorldSmith planning judge. Reconcile ALL candidate plans into ONE superior plan. Favor natural terrain, coherent geography, varied architecture, useful interiors, purposeful roads, precise voxel detail and safe non-destructive edits. Return only the final JSON object.\nCANDIDATES:\n" + json.dumps(plans, indent=2)[:24000]
         chosen, judge_name = None, None
         judges = []
-        if self.settings.openai_key: judges.append(("openai", lambda: call_openai(self.settings.openai_key, self.settings.openai_model, judge_prompt)))
-        if self.settings.gemini_key: judges.append(("gemini", lambda: call_gemini(self.settings.gemini_key, self.settings.gemini_model, judge_prompt)))
+        if self.settings.openai_key:
+            judges.append(("openai", lambda: call_openai(self.settings.openai_key, self.settings.openai_model, judge_prompt, reasoning)))
+        if self.settings.gemini_key:
+            gemini_reasoning = reasoning if str(reasoning).lower() in {"low", "medium", "high"} else "high"
+            judges.append(("gemini", lambda: call_gemini(self.settings.gemini_key, self.settings.gemini_model, judge_prompt, gemini_reasoning)))
         judges.append(("ollama", lambda: call_ollama(self.settings.ollama_url, self.settings.ollama_model, judge_prompt)))
 
         for name, fn in judges:
