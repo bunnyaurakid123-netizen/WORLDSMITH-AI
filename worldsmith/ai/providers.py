@@ -33,12 +33,21 @@ def _post_json(url: str, payload: dict[str, Any], headers: dict[str, str] | None
         raise ProviderError(str(exc)) from exc
 
 
-def call_openai(api_key: str, model: str, prompt: str) -> AIResponse:
+def _effort(value: str) -> str:
+    value = str(value or "high").lower().strip()
+    return value if value in {"none", "low", "medium", "high", "xhigh", "max"} else "high"
+
+
+def call_openai(api_key: str, model: str, prompt: str, reasoning: str = "high") -> AIResponse:
     if not api_key:
         raise ProviderError("OpenAI key not configured")
     data = _post_json(
         "https://api.openai.com/v1/responses",
-        {"model": model or "gpt-5.1", "input": prompt},
+        {
+            "model": model or "gpt-5.6",
+            "input": prompt,
+            "reasoning": {"effort": _effort(reasoning)},
+        },
         {"Authorization": f"Bearer {api_key}"},
     )
     text = str(data.get("output_text", "")).strip()
@@ -54,7 +63,7 @@ def call_openai(api_key: str, model: str, prompt: str) -> AIResponse:
     return AIResponse("openai", text)
 
 
-def call_gemini(api_key: str, model: str, prompt: str) -> AIResponse:
+def call_gemini(api_key: str, model: str, prompt: str, reasoning: str = "high") -> AIResponse:
     if not api_key:
         raise ProviderError("Gemini key not configured")
     try:
@@ -64,8 +73,20 @@ def call_gemini(api_key: str, model: str, prompt: str) -> AIResponse:
 
     try:
         client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(model=model or "gemini-3.7-flash", contents=prompt)
-        text = str(getattr(response, "text", "") or "").strip()
+        level = _effort(reasoning)
+        text = ""
+        interactions = getattr(client, "interactions", None)
+        if interactions is not None and hasattr(interactions, "create"):
+            response = interactions.create(
+                model=model or "gemini-3.8-flash",
+                input=prompt,
+                generation_config={"thinking_level": level},
+            )
+            text = str(getattr(response, "output_text", "") or getattr(response, "text", "") or "").strip()
+        if not text:
+            # Compatibility fallback for SDKs exposing generate_content without Interactions.
+            response = client.models.generate_content(model=model or "gemini-3.8-flash", contents=prompt)
+            text = str(getattr(response, "text", "") or "").strip()
     except Exception as exc:
         raise ProviderError(f"Gemini SDK error: {exc}") from exc
     if not text:
