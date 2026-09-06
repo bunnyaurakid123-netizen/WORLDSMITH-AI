@@ -2,15 +2,28 @@ from __future__ import annotations
 
 from .builder import BuildResult, WorldBuilder
 from .decoration import ArchitectureFinisher
+from .landscape import LandscapingPass
 from .primitive_ops import PrimitiveOperationCompiler
 from .redstone import RedstoneEngineer
 
 
 class AdvancedWorldBuilder(WorldBuilder):
-    """WorldBuilder plus architecture, redstone and validated AI voxel detail passes."""
+    """WorldBuilder plus architecture, landscaping, redstone and AI voxel detail passes."""
 
     def build(self, plan: dict) -> BuildResult:
         result = super().build(plan)
+        cx, cy, cz = [int(v) for v in plan.get("center", [0, 100, 0])]
+        terrain = plan.get("terrain", {})
+
+        landscape = LandscapingPass(self.level, self.dimension, int(plan.get("seed", self.seed))).apply(
+            (cx, cy, cz),
+            int(terrain.get("radius", 96)),
+            cy,
+            int(terrain.get("mountain_height", 80)),
+            float(terrain.get("roughness", 1.0)),
+            str(plan.get("style", "natural")).lower(),
+        )
+        result.blocks_changed += landscape.blocks_changed
 
         finisher = ArchitectureFinisher(self.level, self.dimension)
         for build in plan.get("builds", [])[:24]:
