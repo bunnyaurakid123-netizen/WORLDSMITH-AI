@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .builder import BuildResult, WorldBuilder
+from .caves import CavePass
 from .decoration import ArchitectureFinisher
 from .landscape import LandscapingPass
 from .primitive_ops import PrimitiveOperationCompiler
@@ -8,20 +9,25 @@ from .redstone import RedstoneEngineer
 
 
 class AdvancedWorldBuilder(WorldBuilder):
-    """WorldBuilder plus architecture, landscaping, redstone and AI voxel detail passes."""
+    """WorldBuilder plus terrain, cave, architecture, landscaping, redstone and AI voxel passes."""
 
     def build(self, plan: dict) -> BuildResult:
         result = super().build(plan)
         cx, cy, cz = [int(v) for v in plan.get("center", [0, 100, 0])]
         terrain = plan.get("terrain", {})
+        seed = int(plan.get("seed", self.seed))
+        radius = int(terrain.get("radius", 96))
+        mountain_height = int(terrain.get("mountain_height", 80))
+        roughness = float(terrain.get("roughness", 1.0))
 
-        landscape = LandscapingPass(self.level, self.dimension, int(plan.get("seed", self.seed))).apply(
-            (cx, cy, cz),
-            int(terrain.get("radius", 96)),
-            cy,
-            int(terrain.get("mountain_height", 80)),
-            float(terrain.get("roughness", 1.0)),
-            str(plan.get("style", "natural")).lower(),
+        if terrain.get("caves", True):
+            caves = CavePass(self.level, self.dimension, seed).carve(
+                (cx, cy, cz), radius, cy, mountain_height, roughness, self.height_at
+            )
+            result.blocks_changed += caves.blocks_changed
+
+        landscape = LandscapingPass(self.level, self.dimension, seed).apply(
+            (cx, cy, cz), radius, cy, mountain_height, roughness, str(plan.get("style", "natural")).lower()
         )
         result.blocks_changed += landscape.blocks_changed
 
