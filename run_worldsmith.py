@@ -6,10 +6,12 @@ from PySide6.QtWidgets import QApplication
 
 import worldsmith.app as app_module
 from worldsmith.aaa import AAAWorldSmithWindow
+from worldsmith.async_build import build_plan_async
 from worldsmith.generation.advanced_builder import AdvancedWorldBuilder
 
-# The AAA launcher upgrades the base app's generation pipeline without duplicating its UI.
+# AAA launcher upgrades the base app's builder and moves build execution off the GUI thread.
 app_module.WorldBuilder = AdvancedWorldBuilder
+AAAWorldSmithWindow.build_plan = build_plan_async
 
 
 def main() -> int:
