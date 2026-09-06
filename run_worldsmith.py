@@ -11,12 +11,10 @@ from worldsmith.assets.appearance import BlockAppearanceCache
 from worldsmith.assets.textured_preview import TexturedLiveWorldPreview
 from worldsmith.async_build import build_plan_async
 from worldsmith.generation.advanced_builder import AdvancedWorldBuilder
+from worldsmith.project_ui import install_project_menu
 
-# AAA launcher upgrades the base app's builder and moves build execution off the GUI thread.
 app_module.WorldBuilder = AdvancedWorldBuilder
 AAAWorldSmithWindow.build_plan = build_plan_async
-
-# Use locally installed Minecraft/resource-pack assets in the AAA live viewport.
 aaa_module.LiveWorldPreview = TexturedLiveWorldPreview
 _appearance_cache = BlockAppearanceCache()
 TexturedLiveWorldPreview._material_color = staticmethod(lambda material: _appearance_cache.resolve(material).color)
@@ -27,6 +25,7 @@ def main() -> int:
     app.setApplicationName("WorldSmith AI")
     app.setOrganizationName("WorldSmith")
     window = AAAWorldSmithWindow()
+    install_project_menu(window)
     window.show()
     return app.exec()
 
