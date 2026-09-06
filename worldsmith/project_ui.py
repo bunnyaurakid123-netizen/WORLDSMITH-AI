@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from worldsmith.project import WorldSmithProject
@@ -13,7 +15,6 @@ def install_project_menu(window) -> None:
     load_action = menu.addAction("Load Project…")
     menu.addSeparator()
     export_action = menu.addAction("Export Plan JSON…")
-
     save_action.triggered.connect(lambda: save_project(window))
     load_action.triggered.connect(lambda: load_project(window))
     export_action.triggered.connect(lambda: export_plan(window))
@@ -23,13 +24,7 @@ def _camera_state(window) -> dict[str, float]:
     preview = getattr(window, "live_preview", None)
     if preview is None:
         return {}
-    return {
-        "yaw": float(getattr(preview, "yaw", 0.0)),
-        "pitch": float(getattr(preview, "pitch", 0.0)),
-        "zoom": float(getattr(preview, "zoom", 1.0)),
-        "pan_x": float(getattr(preview, "pan_x", 0.0)),
-        "pan_y": float(getattr(preview, "pan_y", 0.0)),
-    }
+    return {key: float(getattr(preview, key, default)) for key, default in (("yaw", 0.0), ("pitch", 0.0), ("zoom", 1.0), ("pan_x", 0.0), ("pan_y", 0.0))}
 
 
 def save_project(window) -> None:
@@ -43,10 +38,7 @@ def save_project(window) -> None:
     project.prompt = window.request.toPlainText()
     project.plan = dict(window.last_plan or {})
     project.camera = _camera_state(window)
-    project.metadata = {
-        "world_name": window.current.name,
-        "worldsmith": "0.3.0",
-    }
+    project.metadata = {"world_name": window.current.name, "worldsmith": "0.3.0"}
     project.save(Path(path))
     window.statusBar().showMessage(f"Project saved: {path}")
 
@@ -57,26 +49,24 @@ def load_project(window) -> None:
         return
     try:
         project = WorldSmithProject.load(Path(path))
-        project_world = Path(project.world_path)
-        if not project_world.is_dir():
-            raise ValueError(f"Project world does not exist: {project_world}")
-
-        matches = [item for item in window._saves if item.path.resolve() == project_world.resolve()]
-        if matches:
-            for index in range(window.save_list.count()):
-                item = window.save_list.item(index)
-                if item.data(window.save_list.UserRole).path.resolve() == project_world.resolve():
-                    window.save_list.setCurrentItem(item)
-                    break
-        else:
-            QMessageBox.warning(window, "WorldSmith Project", "The project world is not in the current save scan. Use Choose saves folder, then load the project again.")
+        project_world = Path(project.world_path).resolve()
+        matching_index = None
+        for index in range(window.save_list.count()):
+            item = window.save_list.item(index)
+            save = item.data(Qt.UserRole)
+            if save and save.path.resolve() == project_world:
+                matching_index = index
+                break
+        if matching_index is None:
+            QMessageBox.warning(window, "WorldSmith Project", "The project world is not in the current save scan. Scan or choose the saves folder containing it, then load the project again.")
             return
 
+        window.save_list.setCurrentRow(matching_index)
         window.open_selected()
         window.request.setPlainText(project.prompt)
         window.last_plan = dict(project.plan)
         if window.last_plan:
-            window.plan_output.setPlainText(window.planner_output(window.last_plan) if hasattr(window, "planner_output") else __import__("json").dumps(window.last_plan, indent=2))
+            window.plan_output.setPlainText(json.dumps(window.last_plan, indent=2))
         preview = getattr(window, "live_preview", None)
         if preview:
             for key, value in project.camera.items():
@@ -96,5 +86,5 @@ def export_plan(window) -> None:
     path, _ = QFileDialog.getSaveFileName(window, "Export Plan JSON", "worldsmith-plan.json", "JSON (*.json)")
     if not path:
         return
-    Path(path).write_text(__import__("json").dumps(window.last_plan, indent=2), encoding="utf-8")
+    Path(path).write_text(json.dumps(window.last_plan, indent=2), encoding="utf-8")
     window.statusBar().showMessage(f"Plan exported: {path}")
