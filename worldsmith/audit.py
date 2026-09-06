@@ -27,6 +27,8 @@ class BuildAudit:
     backup_path: str = ""
     quality_issues: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    repair_provider: str = ""
+    repair_plan_path: str = ""
 
     @classmethod
     def start(cls, world_path: Path, plan: dict) -> "BuildAudit":
