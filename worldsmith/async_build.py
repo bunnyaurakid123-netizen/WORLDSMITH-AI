@@ -77,13 +77,7 @@ class BuildWorker(QObject):
             report_path = audit.finish(result, backup, errors=repair_errors or None, started_monotonic=started).save()
             self.activity.emit(f"Audit • report saved to {report_path}")
             self.activity.emit("Generator • build complete")
-            self.finished.emit({
-                "result": result,
-                "backup": backup,
-                "audit": str(report_path),
-                "verification": verification,
-                "repair_plan": str(repair_plan_path) if repair_plan_path else None,
-            })
+            self.finished.emit({"result": result, "backup": backup, "audit": str(report_path), "verification": verification, "repair_plan": str(repair_plan_path) if repair_plan_path else None})
         except Exception as exc:
             if editor is not None:
                 try:
@@ -136,6 +130,11 @@ def _build_finished(window, payload):
     audit = payload.get("audit")
     verification = payload.get("verification")
     repair_plan = payload.get("repair_plan")
+    try:
+        from worldsmith.project_ui import set_repair_proposal
+        set_repair_proposal(window, repair_plan)
+    except Exception:
+        pass
     message = (
         f"Built {result.blocks_changed:,} blocks • "
         f"{result.structures_changed:,} structures • "
