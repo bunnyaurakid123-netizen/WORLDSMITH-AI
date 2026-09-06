@@ -14,8 +14,9 @@ class Settings:
     gemini_key: str = ""
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "gemma3"
-    openai_model: str = "gpt-5.1"
-    gemini_model: str = "gemini-3.7-flash"
+    openai_model: str = "gpt-5.6"
+    gemini_model: str = "gemini-3.8-flash"
+    ai_reasoning: str = "high"
     auto_backup: bool = True
     protect_player_builds: bool = True
     default_radius: int = 96
@@ -57,3 +58,6 @@ class Settings:
         self.gemini_key = os.getenv("GEMINI_API_KEY", "") or SecretStore.get("gemini")
         self.ollama_url = os.getenv("OLLAMA_BASE_URL", self.ollama_url).rstrip("/")
         self.ollama_model = os.getenv("OLLAMA_MODEL", self.ollama_model)
+        self.openai_model = os.getenv("OPENAI_MODEL", self.openai_model)
+        self.gemini_model = os.getenv("GEMINI_MODEL", self.gemini_model)
+        self.ai_reasoning = os.getenv("WORLDSMITH_AI_REASONING", self.ai_reasoning)
