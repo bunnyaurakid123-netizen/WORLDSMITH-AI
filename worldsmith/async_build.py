@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Signal
 
+from worldsmith.audit import BuildAudit
 from worldsmith.backup import backup_world
 from worldsmith.world import WorldEditor
 import worldsmith.app as app_module
@@ -22,6 +24,8 @@ class BuildWorker(QObject):
 
     def run(self):
         editor = None
+        started = time.monotonic()
+        audit = BuildAudit.start(self.world_path, self.plan)
         try:
             backup = None
             if self.auto_backup:
@@ -38,14 +42,21 @@ class BuildWorker(QObject):
             editor.save()
             editor.close()
             editor = None
+            report_path = audit.finish(result, backup, started_monotonic=started).save()
+            self.activity.emit(f"Audit • report saved to {report_path}")
             self.activity.emit("Generator • build complete")
-            self.finished.emit({"result": result, "backup": backup})
+            self.finished.emit({"result": result, "backup": backup, "audit": str(report_path)})
         except Exception as exc:
             if editor is not None:
                 try:
                     editor.close()
                 except Exception:
                     pass
+            try:
+                report_path = audit.finish(backup_path=locals().get("backup"), errors=[str(exc)], started_monotonic=started).save()
+                self.activity.emit(f"Audit • failure report saved to {report_path}")
+            except Exception:
+                pass
             self.failed.emit(str(exc))
 
 
@@ -56,7 +67,6 @@ def build_plan_async(window) -> None:
         window.statusBar().showMessage("A build is already running")
         return
 
-    # Never keep the main Amulet handle open while the worker edits the same save.
     window.close_editor()
     window.save_settings()
     window.build_button.setEnabled(False)
@@ -85,6 +95,7 @@ def build_plan_async(window) -> None:
 def _build_finished(window, payload):
     result = payload["result"]
     backup = payload.get("backup")
+    audit = payload.get("audit")
     message = (
         f"Built {result.blocks_changed:,} blocks • "
         f"{result.structures_changed:,} structures • "
@@ -93,10 +104,11 @@ def _build_finished(window, payload):
     )
     if backup:
         message += f" • backup: {backup}"
+    if audit:
+        message += f" • audit: {audit}"
     window.activity.appendPlainText("WorldSmith • " + message)
     window.statusBar().showMessage(message)
     window.build_button.setEnabled(False)
-    # Reopen the saved world so the inspector and live voxel preview reflect the result.
     try:
         window.open_selected()
     except Exception as exc:
