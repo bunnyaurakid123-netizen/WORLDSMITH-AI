@@ -15,9 +15,13 @@ def install_project_menu(window) -> None:
     load_action = menu.addAction("Load Project…")
     menu.addSeparator()
     export_action = menu.addAction("Export Plan JSON…")
+    repair_action = menu.addAction("Load Latest AI Repair Proposal")
+    repair_action.setEnabled(False)
+    window._repair_action = repair_action
     save_action.triggered.connect(lambda: save_project(window))
     load_action.triggered.connect(lambda: load_project(window))
     export_action.triggered.connect(lambda: export_plan(window))
+    repair_action.triggered.connect(lambda: load_repair_proposal(window))
 
 
 def _camera_state(window) -> dict[str, float]:
@@ -38,7 +42,7 @@ def save_project(window) -> None:
     project.prompt = window.request.toPlainText()
     project.plan = dict(window.last_plan or {})
     project.camera = _camera_state(window)
-    project.metadata = {"world_name": window.current.name, "worldsmith": "0.3.0"}
+    project.metadata = {"world_name": window.current.name, "worldsmith": "0.4.0"}
     project.save(Path(path))
     window.statusBar().showMessage(f"Project saved: {path}")
 
@@ -60,7 +64,6 @@ def load_project(window) -> None:
         if matching_index is None:
             QMessageBox.warning(window, "WorldSmith Project", "The project world is not in the current save scan. Scan or choose the saves folder containing it, then load the project again.")
             return
-
         window.save_list.setCurrentRow(matching_index)
         window.open_selected()
         window.request.setPlainText(project.prompt)
@@ -77,6 +80,35 @@ def load_project(window) -> None:
         window.statusBar().showMessage(f"Project loaded: {path}")
     except Exception as exc:
         QMessageBox.critical(window, "WorldSmith Project", str(exc))
+
+
+def set_repair_proposal(window, path: str | None):
+    window.last_repair_plan_path = Path(path) if path else None
+    action = getattr(window, "_repair_action", None)
+    if action:
+        action.setEnabled(bool(window.last_repair_plan_path and window.last_repair_plan_path.exists()))
+
+
+def load_repair_proposal(window) -> None:
+    path = getattr(window, "last_repair_plan_path", None)
+    if path is None or not Path(path).exists():
+        QMessageBox.information(window, "AI Repair", "No repair proposal is available yet.")
+        return
+    try:
+        plan = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(plan, dict):
+            raise ValueError("Repair proposal is not a JSON object")
+        window.last_plan = plan
+        window.plan_output.setPlainText(json.dumps(plan, indent=2))
+        window.build_button.setEnabled(bool(plan.get("builds") or plan.get("operations")))
+        window.request.setPlainText(f"AI repair proposal loaded from {Path(path).name}. Review it before building.")
+        window.statusBar().showMessage("AI repair proposal loaded; review before Build")
+        try:
+            window._switch_page(1)
+        except Exception:
+            pass
+    except Exception as exc:
+        QMessageBox.critical(window, "AI Repair", str(exc))
 
 
 def export_plan(window) -> None:
