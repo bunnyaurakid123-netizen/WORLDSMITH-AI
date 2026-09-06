@@ -1,111 +1,121 @@
 # WorldSmith AI
 
-WorldSmith AI is a standalone Minecraft Java world editor and procedural builder. It is **not a Minecraft mod** and does not need to run inside Minecraft.
+WorldSmith AI is a standalone desktop application for editing Minecraft Java saves. It is **not a Minecraft mod**.
 
-## Current features
+## What is actually implemented
 
-- Automatically discovers Minecraft Java `saves` directories on Windows/macOS/Linux, including common `.minecraft` and TLauncher locations.
-- Opens existing worlds through Amulet Core and saves edits directly back to the world.
-- Makes a timestamped backup before generation by default.
-- Multi-provider AI planning with **Ollama + OpenAI + Gemini**.
-- Runs configured providers in parallel, validates their structured plans, then uses an available model to reconcile them.
-- Offline fallback planner when no remote provider is configured.
-- Transparent **AI activity log** showing what stage/provider is running without exposing private model chain-of-thought.
-- Persistent local **AI memory** stored in SQLite, with manual remember/forget controls and recent-session recall.
-- Interactive **3D terrain preview** using Qt OpenGL before writing a plan into a world.
-- Google account sign-in using desktop OAuth/OpenID Connect for identity only. WorldSmith does not request Gmail message access.
-- Procedural mountain terrain with layered deterministic noise.
-- Roads, castles/towers, village shells, basic furnished interiors and a compact redstone gate mechanism.
-- User-provided provider credentials remain local and are never committed to the repository.
+### Desktop editor
+- PySide6 desktop UI with Overview, AI Builder, 3D Preview, Memory, World Inspector, Settings and AAA voxel tools.
+- Automatically discovers common Minecraft Java save locations, including `.minecraft` and common TLauncher locations.
+- Opens and writes real Java saves through Amulet Core.
+- Timestamped backups before edits by default.
+- Background AI planning and background world generation so large operations do not intentionally block the GUI.
 
-## Architecture
+### Multi-AI planning
+- Ollama local backend.
+- OpenAI backend.
+- Gemini backend.
+- Candidate plans can be generated in parallel and reconciled by a judge model.
+- Structured JSON plan format for terrain, structures, roads, bridges and primitive voxel operations.
+- Offline deterministic fallback when remote AI providers are unavailable.
+- Stage-level AI activity log; private model chain-of-thought is not exposed.
 
-```text
-Desktop UI (PySide6)
-        |
-        +-- Save Scanner
-        |
-        +-- World Service (Amulet Core)
-        |
-        +-- AI Ensemble
-        |     +-- Ollama (local)
-        |     +-- OpenAI
-        |     +-- Gemini
-        |
-        +-- AI Activity Events
-        |
-        +-- Local Memory (SQLite)
-        |
-        +-- Planner / Sanitizer
-        |
-        +-- 3D Preview (Qt OpenGL)
-        |
-        +-- Procedural Builder
-        |     +-- Terrain
-        |     +-- Roads
-        |     +-- Structures
-        |     +-- Interiors
-        |     +-- Redstone
-        |
-        +-- Backup / Save
-```
+### AI memory
+- Local SQLite memory database under `~/.worldsmith/memory.db`.
+- User memories and recent build sessions can be recalled during planning.
+- Manual remember/forget controls.
+
+### AAA editor foundation
+- Transactional voxel editing with undo/redo.
+- Fill, hollow, sphere and cylinder brushes.
+- Selection normalization and volume limits.
+- Live sampling of the opened Minecraft world.
+- Interactive OpenGL preview with orbit, pan and zoom.
+- Local Minecraft/resource-pack asset discovery.
+- Asset-driven preview color resolution when matching block models/textures are available.
+
+### Generation engine
+- Deterministic multi-scale terrain noise.
+- Mountain and ridge generation.
+- River carving and water placement.
+- Basic climate/biome material variation.
+- Roads and bridges.
+- Castle, village, city, tower and generic structure generation.
+- Interior furnishing pass.
+- Architecture finishing pass with roofs, chimneys, balconies, lighting and furniture.
+- Explicit-state redstone gate generation.
+- AI-authored primitive voxel operations with hard operation and block-budget limits.
+
+### Quality and safety
+- Plan sanitization before building.
+- Coordinate and size limits.
+- Structure overlap detection.
+- Deterministic low-risk plan repairs.
+- Post-build factual verification of expected structures and road endpoints.
+- Persistent build audit JSON reports under `~/.worldsmith/runs/`.
+- Player-build protection settings are part of the planning policy.
+
+### Credentials and login
+- OpenAI and Gemini API keys are stored through the operating-system keyring rather than the settings JSON.
+- Google OAuth is identity-only with `openid`, `email` and `profile` scopes. No Gmail mailbox access is requested.
+
+## Important current limitation
+
+This repository is an evolving AAA editor/generation foundation. The viewport is a lightweight OpenGL voxel/heightfield renderer, not a full Minecraft-compatible renderer yet. The procedural builders are substantially more capable than the original prototype, but they are not equivalent to a hand-authored AAA Minecraft world or a complete Minecraft client renderer.
+
+Redstone generation currently performs explicit-state placement and topology checks; it is **not yet a full redstone simulator**.
 
 ## Install from source
 
-Python 3.10+ is required. PySide6 itself is a native desktop Qt binding, and the official Qt for Python docs recommend using a virtual environment. citeturn703611search3turn703611search7
+Python 3.10+ is required.
 
 ```bash
 python -m venv .venv
 .venv\\Scripts\\activate
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 python run_worldsmith.py
 ```
 
-On Linux/macOS, activate `.venv/bin/activate` instead.
+On Linux/macOS, use `.venv/bin/activate` instead.
 
 ## AI providers
 
-Ollama is used locally at `http://localhost:11434` by default. Each user can enter their own OpenAI and Gemini API keys in Settings. No shared key is bundled into WorldSmith.
+Ollama defaults to `http://localhost:11434`. Each user configures their own OpenAI and Gemini API keys in WorldSmith Settings.
 
-The current Gemini integration uses the model HTTP API, and Google’s current developer docs also provide the `google-genai` SDK as the recommended modern Python library. citeturn284555search0turn284555search4
+## Google account setup
 
-## Google login setup
-
-WorldSmith uses Google OAuth for **account identity**, not Gmail mailbox access. The desktop OAuth flow requires a Google Cloud OAuth client of type **Desktop app**; Google documents that setup for installed applications. citeturn284555search3
-
-1. Create a Desktop app OAuth client in Google Cloud.
-2. Download its JSON client file.
-3. In WorldSmith Settings, choose that JSON file under **Google account**.
+1. Create a Google OAuth client of type **Desktop app** in Google Cloud.
+2. Download the OAuth client JSON.
+3. Select the JSON file in WorldSmith Settings.
 4. Press **Sign in with Google**.
-5. The browser completes OAuth and WorldSmith stores the refresh token through the operating-system keyring.
 
-## Memory
+WorldSmith uses this for application identity only.
 
-Memory is stored locally in `~/.worldsmith/memory.db`.
+## Windows executable
 
-WorldSmith recalls relevant saved preferences and recent sessions when building a new plan. The user can inspect and delete memories from the Memory page.
+### One-click local build
 
-## World editing
+Run:
 
-WorldSmith works on the actual Java save directory and should be used while Minecraft is closed. A timestamped backup is created before edits by default.
-
-The generation engine is intentionally structured so new terrain, city, biome, dungeon, interior and redstone generators can be added without changing the AI interface.
-
-## Windows EXE
-
-PyInstaller can package a Python application as a single executable with `--onefile`, and its documentation notes that Windows executables should be built on Windows rather than cross-compiled. citeturn640067search0turn640067search1
-
-For a local Windows build:
-
-```powershell
-python -m pip install -r requirements.txt
-python -m PyInstaller --noconfirm --clean worldsmith.spec
+```text
+BUILD_WORLDSMITH.bat
 ```
 
-The executable is produced as:
+The finished executable is placed at:
 
 ```text
 dist\\WorldSmithAI.exe
 ```
 
-A GitHub Actions workflow also builds this Windows executable automatically on pushes to `main` and uploads it as the `WorldSmithAI-windows` artifact.
+To launch an existing build, use:
+
+```text
+RUN_WORLDSMITH.bat
+```
+
+GitHub Actions also contains a Windows build workflow that installs dependencies, runs the test suite, builds the EXE with PyInstaller and verifies that `dist\\WorldSmithAI.exe` exists before uploading it as an artifact.
+
+## Tests
+
+The test suite covers planning, save scanning, editor transactions/brushes, primitive-operation limits, quality repair, asset catalog behavior, secrets, audit persistence, redstone contracts and post-build verification.
