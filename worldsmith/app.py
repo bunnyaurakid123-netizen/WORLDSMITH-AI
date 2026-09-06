@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QFont, QSurfaceFormat
+from PySide6.QtGui import QSurfaceFormat
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -156,16 +155,9 @@ class WorldSmithWindow(QMainWindow):
         main.addWidget(top)
 
         self.pages = QStackedWidget()
-        self.pages.addWidget(self._overview_page())
-        self.pages.addWidget(self._builder_page())
-        self.pages.addWidget(self._preview_page())
-        self.pages.addWidget(self._memory_page())
-        self.pages.addWidget(self._inspector_page())
-        self.pages.addWidget(self._settings_page())
-        main.addWidget(self.pages,1)
-        outer.addWidget(content,1)
-        self.setCentralWidget(root)
-        self.statusBar().showMessage("WorldSmith ready")
+        self.pages.addWidget(self._overview_page()); self.pages.addWidget(self._builder_page()); self.pages.addWidget(self._preview_page())
+        self.pages.addWidget(self._memory_page()); self.pages.addWidget(self._inspector_page()); self.pages.addWidget(self._settings_page())
+        main.addWidget(self.pages,1); outer.addWidget(content,1); self.setCentralWidget(root); self.statusBar().showMessage("WorldSmith ready")
 
     def _overview_page(self):
         page = QWidget(); root = QVBoxLayout(page); root.setContentsMargins(4,4,4,4); root.setSpacing(14)
@@ -174,21 +166,18 @@ class WorldSmithWindow(QMainWindow):
         d=QLabel("Generate terrain, settlements, interiors and redstone plans, preview them in 3D, then write the result into a real Minecraft Java save."); d.setObjectName("muted"); d.setWordWrap(True); hl.addWidget(d)
         actions=QHBoxLayout(); openb=QPushButton("Open selected world"); openb.setObjectName("primary"); openb.clicked.connect(self.open_selected); actions.addWidget(openb)
         scan=QPushButton("Scan saves"); scan.clicked.connect(self.refresh_saves); actions.addWidget(scan); actions.addStretch(); hl.addLayout(actions); root.addWidget(hero)
-
         grid=QGridLayout(); grid.setHorizontalSpacing(14); grid.setVerticalSpacing(14)
         for c in range(3): grid.setColumnStretch(c,1)
         c1=Card("Minecraft worlds"); self.overview_saves=QLabel("0"); self.overview_saves.setObjectName("metric"); c1.layout.addWidget(self.overview_saves); grid.addWidget(c1,0,0)
         c2=Card("Active world"); self.overview_world=QLabel("None"); self.overview_world.setObjectName("section"); self.overview_world.setWordWrap(True); c2.layout.addWidget(self.overview_world); self.overview_meta=QLabel("Choose a save to get started."); self.overview_meta.setObjectName("muted"); self.overview_meta.setWordWrap(True); c2.layout.addWidget(self.overview_meta); grid.addWidget(c2,0,1)
         c3=Card("AI ensemble"); self.provider_summary=QLabel("Checking configuration…"); self.provider_summary.setWordWrap(True); c3.layout.addWidget(self.provider_summary); grid.addWidget(c3,0,2)
         root.addLayout(grid)
-
         worlds=Card("Detected saves"); self.save_list=QListWidget(); self.save_list.currentItemChanged.connect(self._preview_selection); self.save_list.itemDoubleClicked.connect(lambda _:self.open_selected()); worlds.layout.addWidget(self.save_list)
-        row=QHBoxLayout(); b=QPushButton("Open selected"); b.setObjectName("primary"); b.clicked.connect(self.open_selected); row.addWidget(b); row.addStretch(); worlds.layout.addLayout(row); root.addWidget(worlds,1)
-        return page
+        row=QHBoxLayout(); b=QPushButton("Open selected"); b.setObjectName("primary"); b.clicked.connect(self.open_selected); row.addWidget(b); row.addStretch(); worlds.layout.addLayout(row); root.addWidget(worlds,1); return page
 
     def _builder_page(self):
         page=QWidget(); root=QVBoxLayout(page); root.setContentsMargins(4,4,4,4); root.setSpacing(12)
-        head=QHBoxLayout(); t=QLabel("AI Builder"); t.setObjectName("title"); head.addWidget(t); head.addStretch(); head.addWidget(QLabel("Transparent activity, hidden chain-of-thought not exposed")); root.addLayout(head)
+        head=QHBoxLayout(); t=QLabel("AI Builder"); t.setObjectName("title"); head.addWidget(t); head.addStretch(); head.addWidget(QLabel("AI activity shows progress summaries, not private chain-of-thought")); root.addLayout(head)
         body=QHBoxLayout(); left=QVBoxLayout(); right=QVBoxLayout()
         prompt=Card("Describe what to build"); self.request=QPlainTextEdit(); self.request.setMinimumHeight(190); self.request.setPlaceholderText("Create a huge snowy mountain kingdom with a castle on a cliff, forests, rivers, roads, detailed interiors and functional redstone gates…"); prompt.layout.addWidget(self.request); left.addWidget(prompt)
         origin=Card("Build origin"); coords=QGridLayout(); self.x_spin=QSpinBox(); self.x_spin.setRange(-30000000,30000000); self.y_spin=QSpinBox(); self.y_spin.setRange(-2048,2048); self.y_spin.setValue(100); self.z_spin=QSpinBox(); self.z_spin.setRange(-30000000,30000000)
@@ -200,35 +189,26 @@ class WorldSmithWindow(QMainWindow):
         body.addLayout(left,5); body.addLayout(right,6); root.addLayout(body,1); return page
 
     def _preview_page(self):
-        page=QWidget(); root=QVBoxLayout(page); root.setContentsMargins(4,4,4,4)
-        head=QHBoxLayout(); t=QLabel("3D Preview"); t.setObjectName("title"); head.addWidget(t); head.addStretch(); head.addWidget(QLabel("Drag to orbit • wheel to zoom")); root.addLayout(head)
-        card=Card(); self.preview=Preview3D(); card.layout.addWidget(self.preview,1); root.addWidget(card,1)
-        return page
+        page=QWidget(); root=QVBoxLayout(page); root.setContentsMargins(4,4,4,4); head=QHBoxLayout(); t=QLabel("3D Preview"); t.setObjectName("title"); head.addWidget(t); head.addStretch(); head.addWidget(QLabel("Drag to orbit • wheel to zoom")); root.addLayout(head); card=Card(); self.preview=Preview3D(); card.layout.addWidget(self.preview,1); root.addWidget(card,1); return page
 
     def _memory_page(self):
         page=QWidget(); root=QVBoxLayout(page); root.setContentsMargins(4,4,4,4); head=QHBoxLayout(); t=QLabel("AI Memory"); t.setObjectName("title"); head.addWidget(t); head.addStretch(); head.addWidget(QLabel("Stored locally on this PC")); root.addLayout(head)
         card=Card("Long-term memories"); self.memory_list=QListWidget(); card.layout.addWidget(self.memory_list,1)
         self.memory_input=QPlainTextEdit(); self.memory_input.setPlaceholderText("Example: Prefer dramatic mountains, warm medieval interiors, and spruce/stone architecture."); self.memory_input.setMaximumHeight(90); card.layout.addWidget(self.memory_input)
-        row=QHBoxLayout(); add=QPushButton("Remember"); add.setObjectName("primary"); add.clicked.connect(self.add_memory); row.addWidget(add); forget=QPushButton("Forget selected"); forget.setObjectName("danger"); forget.clicked.connect(self.forget_memory); row.addWidget(forget); row.addStretch(); card.layout.addLayout(row); root.addWidget(card,1); self.refresh_memory(); return page
+        row=QHBoxLayout(); add=QPushButton("Remember"); add.setObjectName("primary"); add.clicked.connect(self.add_memory); row.addWidget(add); forget=QPushButton("Forget selected"); forget.setObjectName("danger"); forget.clicked.connect(self.forget_memory); row.addWidget(forget); row.addStretch(); card.layout.addLayout(row); root.addWidget(card,1); return page
 
     def _inspector_page(self):
         page=QWidget(); root=QVBoxLayout(page); root.setContentsMargins(4,4,4,4); t=QLabel("World Inspector"); t.setObjectName("title"); root.addWidget(t); card=Card("Save metadata and analysis"); self.inspection=QPlainTextEdit(); self.inspection.setReadOnly(True); card.layout.addWidget(self.inspection); root.addWidget(card,1); return page
 
     def _settings_page(self):
         page=QWidget(); root=QVBoxLayout(page); root.setContentsMargins(4,4,4,4); t=QLabel("Settings"); t.setObjectName("title"); root.addWidget(t)
-        card=Card("AI providers"); form=QFormLayout()
-        self.openai_edit=QLineEdit(self.settings.openai_key); self.gemini_edit=QLineEdit(self.settings.gemini_key); self.openai_edit.setEchoMode(QLineEdit.Password); self.gemini_edit.setEchoMode(QLineEdit.Password)
+        card=Card("AI providers"); form=QFormLayout(); self.openai_edit=QLineEdit(self.settings.openai_key); self.gemini_edit=QLineEdit(self.settings.gemini_key); self.openai_edit.setEchoMode(QLineEdit.Password); self.gemini_edit.setEchoMode(QLineEdit.Password)
         self.openai_model_edit=QLineEdit(self.settings.openai_model); self.gemini_model_edit=QLineEdit(self.settings.gemini_model); self.ollama_edit=QLineEdit(self.settings.ollama_url); self.ollama_model_edit=QLineEdit(self.settings.ollama_model)
         for label,w in [("OpenAI API key",self.openai_edit),("OpenAI model",self.openai_model_edit),("Gemini API key",self.gemini_edit),("Gemini model",self.gemini_model_edit),("Ollama URL",self.ollama_edit),("Ollama model",self.ollama_model_edit)]: form.addRow(label,w)
-        card.layout.addLayout(form)
-        self.backup_check=QCheckBox("Create a timestamped backup before building"); self.backup_check.setChecked(self.settings.auto_backup); card.layout.addWidget(self.backup_check)
-        self.protect_check=QCheckBox("Protect player-built areas in the planning rules"); self.protect_check.setChecked(self.settings.protect_player_builds); card.layout.addWidget(self.protect_check)
-        root.addWidget(card)
-
+        card.layout.addLayout(form); self.backup_check=QCheckBox("Create a timestamped backup before building"); self.backup_check.setChecked(self.settings.auto_backup); card.layout.addWidget(self.backup_check); self.protect_check=QCheckBox("Protect player-built areas in the planning rules"); self.protect_check.setChecked(self.settings.protect_player_builds); card.layout.addWidget(self.protect_check); root.addWidget(card)
         google=Card("Google account"); gf=QFormLayout(); self.google_secret_edit=QLineEdit(self.settings.google_client_secret); gf.addRow("OAuth desktop client JSON",self.google_secret_edit); google.layout.addLayout(gf)
         gline=QHBoxLayout(); browse=QPushButton("Choose client JSON"); browse.clicked.connect(self.choose_google_secret); gline.addWidget(browse); self.signin=QPushButton("Sign in with Google"); self.signin.setObjectName("primary"); self.signin.clicked.connect(self.google_signin); gline.addWidget(self.signin); signout=QPushButton("Sign out"); signout.clicked.connect(self.google_signout); gline.addWidget(signout); google.layout.addLayout(gline)
-        self.google_note=QLabel("WorldSmith requests Google identity scopes for account login; it does not need Gmail message access."); self.google_note.setObjectName("muted"); self.google_note.setWordWrap(True); google.layout.addWidget(self.google_note); root.addWidget(google)
-
+        self.google_note=QLabel("Uses Google identity (OpenID Connect) for login. WorldSmith does not request Gmail message access."); self.google_note.setObjectName("muted"); self.google_note.setWordWrap(True); google.layout.addWidget(self.google_note); root.addWidget(google)
         save=QPushButton("Save settings"); save.setObjectName("primary"); save.clicked.connect(self.save_settings); root.addWidget(save); root.addStretch(); return page
 
     def _switch_page(self,index:int):
@@ -237,16 +217,14 @@ class WorldSmithWindow(QMainWindow):
 
     def refresh_saves(self):
         self.save_list.clear(); self._saves=scan_saves(); self.overview_saves.setText(str(len(self._saves)))
-        for save in self._saves:
-            item=QListWidgetItem(save.name); item.setData(Qt.UserRole,save); self.save_list.addItem(item)
+        for save in self._saves: item=QListWidgetItem(save.name); item.setData(Qt.UserRole,save); self.save_list.addItem(item)
         self.sidebar_status.setText(f"{len(self._saves)} saves found"); self.statusBar().showMessage(f"Detected {len(self._saves)} Minecraft saves")
 
     def choose_folder(self):
         folder=QFileDialog.getExistingDirectory(self,"Choose Minecraft saves folder")
         if not folder:return
         self.save_list.clear(); self._saves=scan_saves([Path(folder)]); self.overview_saves.setText(str(len(self._saves)))
-        for save in self._saves:
-            item=QListWidgetItem(save.name); item.setData(Qt.UserRole,save); self.save_list.addItem(item)
+        for save in self._saves: item=QListWidgetItem(save.name); item.setData(Qt.UserRole,save); self.save_list.addItem(item)
 
     def _preview_selection(self,current,_previous):
         if not current:return
@@ -257,17 +235,15 @@ class WorldSmithWindow(QMainWindow):
         if not item: QMessageBox.information(self,"WorldSmith","Select a Minecraft world first."); return
         self.close_editor(); self.current=item.data(Qt.UserRole); self.editor=WorldEditor(self.current.path)
         try:
-            summary=self.editor.open(); self.world_chip.setText(summary.path.name); self.overview_world.setText(summary.path.name); self.overview_meta.setText(f"{summary.platform} • {summary.version}"); self.inspection.setPlainText(inspect_world(self.current.path)+f"\n\nAmulet chunks: {summary.chunks}\nBounds: {summary.bounds}"); self.sidebar_status.setText(f"Open: {summary.path.name}"); self.statusBar().showMessage("World opened");
-            self._switch_page(1)
-        except Exception as exc:
-            self.close_editor(); QMessageBox.critical(self,"WorldSmith",str(exc))
+            summary=self.editor.open(); self.world_chip.setText(summary.path.name); self.overview_world.setText(summary.path.name); self.overview_meta.setText(f"{summary.platform} • {summary.version}"); self.inspection.setPlainText(inspect_world(self.current.path)+f"\n\nAmulet chunks: {summary.chunks}\nBounds: {summary.bounds}"); self.sidebar_status.setText(f"Open: {summary.path.name}"); self.statusBar().showMessage("World opened"); self._switch_page(1)
+        except Exception as exc: self.close_editor(); QMessageBox.critical(self,"WorldSmith",str(exc))
 
     def save_settings(self):
         self.settings.openai_key=self.openai_edit.text().strip(); self.settings.gemini_key=self.gemini_edit.text().strip(); self.settings.openai_model=self.openai_model_edit.text().strip(); self.settings.gemini_model=self.gemini_model_edit.text().strip(); self.settings.ollama_url=self.ollama_edit.text().strip().rstrip('/'); self.settings.ollama_model=self.ollama_model_edit.text().strip(); self.settings.auto_backup=self.backup_check.isChecked(); self.settings.protect_player_builds=self.protect_check.isChecked(); self.settings.google_client_secret=self.google_secret_edit.text().strip(); self.settings.save(self.settings_path); self._refresh_provider_status(); self.statusBar().showMessage("Settings saved")
 
     def _refresh_provider_status(self):
         states=[f"OpenAI: {'ready' if self.settings.openai_key else 'key needed'}",f"Gemini: {'ready' if self.settings.gemini_key else 'key needed'}",f"Ollama: {self.settings.ollama_model}"]
-        self.provider_summary.setText("\n".join(states));
+        self.provider_summary.setText("\n".join(states))
         if self.settings.google_email:
             self.account_chip.setText(self.settings.google_email); self.sidebar_account.setText(f"Signed in\n{self.settings.google_email}")
 
@@ -275,30 +251,27 @@ class WorldSmithWindow(QMainWindow):
         if not self.current: QMessageBox.information(self,"WorldSmith","Open a world first."); return
         request=self.request.toPlainText().strip()
         if not request:return
-        self.save_settings(); self.last_plan=None; self.build_button.setEnabled(False); self.activity.clear(); self.activity.append("WorldSmith • starting ensemble analysis"); self.progress.show(); self.plan_btn.setEnabled(False)
-        center=(self.x_spin.value(),self.y_spin.value(),self.z_spin.value()); world_context=inspect_world(self.current.path); memory_context=self.memory.build_context(request,str(self.current.path));
-        combined=(world_context+"\n\n"+memory_context+"\n\nPLAYER BUILD PROTECTION="+str(self.settings.protect_player_builds))[:12000]
+        self.save_settings(); self.last_plan=None; self.build_button.setEnabled(False); self.activity.clear(); self.activity.appendPlainText("WorldSmith • starting ensemble analysis"); self.progress.show(); self.plan_btn.setEnabled(False)
+        center=(self.x_spin.value(),self.y_spin.value(),self.z_spin.value()); world_context=inspect_world(self.current.path); memory_context=self.memory.build_context(request,str(self.current.path)); combined=(world_context+"\n\n"+memory_context+"\n\nPLAYER BUILD PROTECTION="+str(self.settings.protect_player_builds))[:12000]
         self._thread=QThread(); self._worker=PlannerWorker(Planner(Ensemble(self.settings)),request,combined,center); self._worker.moveToThread(self._thread); self._thread.started.connect(self._worker.run); self._worker.activity.connect(self.activity.appendPlainText); self._worker.finished.connect(self._plan_finished); self._worker.failed.connect(self._plan_failed); self._worker.finished.connect(self._thread.quit); self._worker.failed.connect(self._thread.quit); self._thread.finished.connect(self._planning_cleanup); self._thread.start()
 
     def _plan_finished(self,result):
-        self.last_plan=result.plan; self.plan_output.setPlainText(result.pretty()); self.preview.set_plan(self.last_plan); self.build_button.setEnabled(bool(self.last_plan.get("builds"))); self.activity.appendPlainText("WorldSmith • preview updated and plan is ready"); self._switch_page(2); self._switch_page(1)
+        self.last_plan=result.plan; self.plan_output.setPlainText(result.pretty()); self.preview.set_plan(self.last_plan); self.build_button.setEnabled(bool(self.last_plan.get("builds"))); self.activity.appendPlainText("WorldSmith • preview updated and plan is ready");
         try:self.memory.save_conversation(str(self.current.path),self.request.toPlainText(),str(self.last_plan.get("summary", "Plan generated")))
         except Exception: pass
         self.refresh_memory()
 
-    def _plan_failed(self,message):
-        self.activity.appendPlainText(f"WorldSmith • ERROR: {message}"); QMessageBox.critical(self,"Planning error",message)
+    def _plan_failed(self,message): self.activity.appendPlainText(f"WorldSmith • ERROR: {message}"); QMessageBox.critical(self,"Planning error",message)
 
-    def _planning_cleanup(self):
-        self.progress.hide(); self.plan_btn.setEnabled(True); self._worker=None; self._thread=None
+    def _planning_cleanup(self): self.progress.hide(); self.plan_btn.setEnabled(True); self._worker=None; self._thread=None
 
     def build_plan(self):
         if not self.current or not self.last_plan:return
         try:
-            self.close_editor(); backup=backup_world(self.current.path) if self.settings.auto_backup else None; self.editor=WorldEditor(self.current.path); self.editor.open(); self.activity.appendPlainText("Builder • writing blocks to save"); result=WorldBuilder(self.editor.require_level()).build(self.last_plan); self.editor.save(); self.close_editor(); msg=f"Built {result.blocks_changed} blocks, {result.roads_changed} road blocks, {result.systems_changed} redstone blocks."; self.activity.appendPlainText("Builder • world saved successfully");
-            if backup: msg+=f" Backup: {backup}"; self.statusBar().showMessage(msg); self.build_button.setEnabled(False); QMessageBox.information(self,"WorldSmith",msg)
-        except Exception as exc:
-            self.close_editor(); QMessageBox.critical(self,"Build error",str(exc))
+            self.close_editor(); backup=backup_world(self.current.path) if self.settings.auto_backup else None; self.editor=WorldEditor(self.current.path); self.editor.open(); self.activity.appendPlainText("Builder • writing blocks to save"); result=WorldBuilder(self.editor.require_level()).build(self.last_plan); self.editor.save(); self.close_editor(); msg=f"Built {result.blocks_changed} blocks, {result.roads_changed} road blocks, {result.systems_changed} redstone blocks."; self.activity.appendPlainText("Builder • world saved successfully")
+            if backup: msg += f" Backup: {backup}"
+            self.statusBar().showMessage(msg); self.build_button.setEnabled(False); QMessageBox.information(self,"WorldSmith",msg)
+        except Exception as exc: self.close_editor(); QMessageBox.critical(self,"Build error",str(exc))
 
     def refresh_memory(self):
         if not hasattr(self,'memory_list'):return
@@ -344,7 +317,6 @@ class WorldSmithWindow(QMainWindow):
 
 
 def main():
-    # Compatibility profile keeps the lightweight preview compatible with OpenGL 2-style rendering.
     fmt=QSurfaceFormat(); fmt.setRenderableType(QSurfaceFormat.OpenGL); fmt.setProfile(QSurfaceFormat.CompatibilityProfile); QSurfaceFormat.setDefaultFormat(fmt)
     app=QApplication(sys.argv); app.setApplicationName("WorldSmith AI"); app.setOrganizationName("WorldSmith")
     window=WorldSmithWindow(); window.show(); return app.exec()
