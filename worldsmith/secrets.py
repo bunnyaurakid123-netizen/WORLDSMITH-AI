@@ -21,14 +21,18 @@ class SecretStore:
             return ""
 
     @classmethod
-    def set(cls, provider: str, value: str) -> None:
+    def set(cls, provider: str, value: str) -> bool:
         name = cls.KEYS.get(provider)
         if not name:
             raise ValueError(f"Unknown secret provider: {provider}")
-        if value:
-            keyring.set_password(SERVICE, name, value)
-        else:
+        if not value:
             cls.delete(provider)
+            return True
+        try:
+            keyring.set_password(SERVICE, name, value)
+            return True
+        except Exception:
+            return False
 
     @classmethod
     def delete(cls, provider: str) -> None:
@@ -41,16 +45,14 @@ class SecretStore:
             pass
 
     @classmethod
-    def migrate_from_settings(cls, settings) -> None:
-        """Move legacy plaintext API keys out of settings and into the OS keyring."""
+    def migrate_from_settings(cls, settings) -> bool:
         migrated = False
         for provider, field in (("openai", "openai_key"), ("gemini", "gemini_key")):
             value = getattr(settings, field, "")
-            if value:
-                cls.set(provider, value)
+            if value and cls.set(provider, value):
                 setattr(settings, field, "")
                 migrated = True
-        if migrated:
-            return
-        settings.openai_key = cls.get("openai")
-        settings.gemini_key = cls.get("gemini")
+        if not migrated:
+            settings.openai_key = cls.get("openai")
+            settings.gemini_key = cls.get("gemini")
+        return migrated
