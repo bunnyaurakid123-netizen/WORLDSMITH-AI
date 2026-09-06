@@ -14,8 +14,8 @@ class Settings:
     gemini_key: str = ""
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "gemma3"
-    openai_model: str = "gpt-5"
-    gemini_model: str = "gemini-3.8-flash"
+    openai_model: str = "gpt-5.1"
+    gemini_model: str = "gemini-3.7-flash"
     auto_backup: bool = True
     protect_player_builds: bool = True
     default_radius: int = 96
@@ -31,7 +31,6 @@ class Settings:
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 settings = cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__ and k not in {"openai_key", "gemini_key"}})
-                # Migrate any legacy plaintext credentials from older WorldSmith versions.
                 legacy_openai = str(data.get("openai_key", ""))
                 legacy_gemini = str(data.get("gemini_key", ""))
                 if legacy_openai:
@@ -47,7 +46,6 @@ class Settings:
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         data = asdict(self)
-        # Credentials never belong in the settings document.
         openai_key = str(data.pop("openai_key", ""))
         gemini_key = str(data.pop("gemini_key", ""))
         SecretStore.set("openai", openai_key)
