@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .bridges import BridgeBuilder
 from .builder import BuildResult, WorldBuilder
 from .caves import CavePass
 from .decoration import ArchitectureFinisher
@@ -9,7 +10,7 @@ from .redstone import RedstoneEngineer
 
 
 class AdvancedWorldBuilder(WorldBuilder):
-    """WorldBuilder plus terrain, cave, architecture, landscaping, redstone and AI voxel passes."""
+    """WorldBuilder plus caves, bridges, landscaping, architecture, redstone and AI voxel passes."""
 
     def build(self, plan: dict) -> BuildResult:
         result = super().build(plan)
@@ -21,15 +22,16 @@ class AdvancedWorldBuilder(WorldBuilder):
         roughness = float(terrain.get("roughness", 1.0))
 
         if terrain.get("caves", True):
-            caves = CavePass(self.level, self.dimension, seed).carve(
-                (cx, cy, cz), radius, cy, mountain_height, roughness, self.height_at
-            )
+            caves = CavePass(self.level, self.dimension, seed).carve((cx, cy, cz), radius, cy, mountain_height, roughness, self.height_at)
             result.blocks_changed += caves.blocks_changed
 
-        landscape = LandscapingPass(self.level, self.dimension, seed).apply(
-            (cx, cy, cz), radius, cy, mountain_height, roughness, str(plan.get("style", "natural")).lower()
-        )
+        landscape = LandscapingPass(self.level, self.dimension, seed).apply((cx, cy, cz), radius, cy, mountain_height, roughness, str(plan.get("style", "natural")).lower())
         result.blocks_changed += landscape.blocks_changed
+
+        for bridge in plan.get("bridges", [])[:16]:
+            report = BridgeBuilder(self.level, self.dimension).build(bridge)
+            result.blocks_changed += report.blocks_changed
+            result.roads_changed += report.deck_blocks
 
         finisher = ArchitectureFinisher(self.level, self.dimension)
         for build in plan.get("builds", [])[:24]:
