@@ -7,13 +7,11 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import (
     QComboBox,
     QDockWidget,
-    QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QMainWindow,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -55,7 +53,7 @@ class LiveWorldScanWorker(QObject):
             version_key = (platform, version)
             cx, cy, cz = self.center
             min_y, max_y = -64, 320
-            points: list[tuple[int, int, str]] = []
+            points = []
             for x in range(cx - self.radius, cx + self.radius + 1, self.step):
                 for z in range(cz - self.radius, cz + self.radius + 1, self.step):
                     top = min_y
@@ -142,7 +140,8 @@ class LiveWorldPreview(QOpenGLWidget):
         scale = 1.6
         step = float(self.snapshot["step"])
         for x, z, y, material in points:
-            rx, rz = (x - center[0]) * scale / max(1.0, step), (z - center[2]) * scale / max(1.0, step)
+            rx = (x - center[0]) * scale / max(1.0, step)
+            rz = (z - center[2]) * scale / max(1.0, step)
             ry = ((y - (min_h + max_h) * 0.5) / max(1.0, max_h - min_h)) * 70.0
             r, g, b = self._material_color(material)
             GL.glColor3f(r, g, b)
@@ -200,8 +199,7 @@ class VoxelToolsPanel(QWidget):
         root.addWidget(selection_box)
 
         form = QFormLayout()
-        self.block = QComboBox()
-        self.block.setEditable(True)
+        self.block = QComboBox(); self.block.setEditable(True)
         self.block.addItems(["stone", "stone_bricks", "spruce", "oak", "deepslate", "grass", "glass", "quartz", "air"])
         form.addRow("Block", self.block)
         self.brush = QComboBox(); self.brush.addItems(["Fill", "Hollow"]); form.addRow("Selection brush", self.brush)
@@ -210,20 +208,11 @@ class VoxelToolsPanel(QWidget):
         root.addLayout(form)
 
         actions = QGridLayout()
-        for text, fn, row, col in [
-            ("Set selection", self.apply_selection, 0, 0),
-            ("Sphere", self.apply_sphere, 0, 1),
-            ("Cylinder", self.apply_cylinder, 1, 0),
-            ("Undo", self.do_undo, 1, 1),
-            ("Redo", self.do_redo, 2, 0),
-            ("Save world", self.save_world, 2, 1),
-        ]:
+        for text, fn, row, col in [("Set selection", self.apply_selection, 0, 0), ("Sphere", self.apply_sphere, 0, 1), ("Cylinder", self.apply_cylinder, 1, 0), ("Undo", self.do_undo, 1, 1), ("Redo", self.do_redo, 2, 0), ("Save world", self.save_world, 2, 1)]:
             button = QPushButton(text); button.clicked.connect(fn); actions.addWidget(button, row, col)
         root.addLayout(actions)
         root.addStretch()
-        self.info = QLabel("Open a world to enable voxel editing.")
-        self.info.setWordWrap(True)
-        root.addWidget(self.info)
+        self.info = QLabel("Open a world to enable voxel editing."); self.info.setWordWrap(True); root.addWidget(self.info)
 
     def set_preview(self, preview: LiveWorldPreview):
         self.preview = preview
@@ -282,7 +271,14 @@ class VoxelToolsPanel(QWidget):
         self.status.emit(f"Redo changed {self.editor.redo()} blocks")
 
     def save_world(self):
-        self.status.emit("Use WorldSmith's world save flow after reviewing changes.")
+        if not self.editor:
+            self.status.emit("Open a world first")
+            return
+        try:
+            self.editor.adapter.level.save()
+            self.status.emit("World saved successfully")
+        except Exception as exc:
+            QMessageBox.critical(self, "Save world", str(exc))
 
     def scan_preview(self, level):
         if self.preview is None:
@@ -309,15 +305,11 @@ class AAAWorldSmithWindow(WorldSmithWindow):
         self.tools.status.connect(self.statusBar().showMessage)
 
         self.preview_dock = QDockWidget("Live Voxel Editor", self)
-        dock_widget = QWidget()
-        dock_layout = QVBoxLayout(dock_widget)
-        dock_layout.setContentsMargins(0, 0, 0, 0)
-        dock_layout.addWidget(self.live_preview, 1)
-        dock_layout.addWidget(self.tools)
+        dock_widget = QWidget(); dock_layout = QVBoxLayout(dock_widget); dock_layout.setContentsMargins(0, 0, 0, 0)
+        dock_layout.addWidget(self.live_preview, 1); dock_layout.addWidget(self.tools)
         self.preview_dock.setWidget(dock_widget)
         self.preview_dock.setAllowedAreas(Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea)
         self.addDockWidget(Qt.RightDockWidgetArea, self.preview_dock)
-
         self._refresh_aaa_state()
 
     def open_selected(self):
@@ -327,7 +319,8 @@ class AAAWorldSmithWindow(WorldSmithWindow):
             self._refresh_aaa_state()
 
     def close_editor(self):
-        self.tools.clear_world() if hasattr(self, "tools") else None
+        if hasattr(self, "tools"):
+            self.tools.clear_world()
         super().close_editor()
 
     def _refresh_aaa_state(self):
