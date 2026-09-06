@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "worldsmith-ai"
-version = "0.3.0"
+version = "0.4.0"
 description = "Standalone AI-powered Minecraft Java world editor and generator"
 requires-python = ">=3.10"
 dependencies = [
   "PySide6>=6.7",
   "PyOpenGL>=3.1.7",
   "amulet-core>=1.9.43,<2.0",
+  "google-genai>=1.0",
   "google-auth>=2.40",
   "google-auth-oauthlib>=1.2",
   "keyring>=25.6",
