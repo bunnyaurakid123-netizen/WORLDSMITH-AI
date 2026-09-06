@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 from worldsmith.ai.orchestrator import Ensemble, EnsembleResult
+from worldsmith.analysis.spatial import analyze_save
 from worldsmith.generation.quality import inspect_plan, repair_plan
 
 
@@ -25,7 +28,28 @@ class Planner:
     def __init__(self, ensemble: Ensemble):
         self.ensemble = ensemble
 
+    def _augment_world_context(self, context: str, center: tuple[int, int, int], activity: Callable[[str], None] | None = None) -> str:
+        match = re.search(r"^World path: (.+)$", context, re.MULTILINE)
+        if not match:
+            return context
+        path = Path(match.group(1).strip())
+        if not path.is_dir():
+            return context
+        try:
+            if activity:
+                activity("World scanner • sampling the selected area")
+            snapshot = analyze_save(path, center, radius=32)
+            if snapshot:
+                if activity:
+                    activity("World scanner • spatial analysis attached to AI context")
+                return context + "\n\n" + snapshot.text()
+        except Exception as exc:
+            if activity:
+                activity(f"World scanner • skipped: {exc}")
+        return context
+
     def make_plan(self, request, context, center=(0, 100, 0), activity: Callable[[str], None] | None = None):
+        context = self._augment_world_context(context, center, activity)
         result = self.ensemble.plan(request, context, center, activity=activity)
         sanitized = self._sanitize(result.plan, center)
         repaired, issues = repair_plan(sanitized)
@@ -54,8 +78,8 @@ class Planner:
         plan["center"] = [self._int(v, d) for v, d in zip(plan["center"], (cx, cy, cz))]
         plan["seed"] = self._int(plan.get("seed", 1337), 1337)
 
-        terrain = plan.setdefault("terrain", {"enabled": True, "radius": 96, "mountain_height": 80, "roughness": 1.0, "water": True, "vegetation": True})
-        terrain["enabled"] = bool(terrain.get("enabled", True)); terrain["water"] = bool(terrain.get("water", True)); terrain["vegetation"] = bool(terrain.get("vegetation", True))
+        terrain = plan.setdefault("terrain", {"enabled": True, "radius": 96, "mountain_height": 80, "roughness": 1.0, "water": True, "vegetation": True, "caves": True})
+        terrain["enabled"] = bool(terrain.get("enabled", True)); terrain["water"] = bool(terrain.get("water", True)); terrain["vegetation"] = bool(terrain.get("vegetation", True)); terrain["caves"] = bool(terrain.get("caves", True))
         terrain["radius"] = max(32, min(self._int(terrain.get("radius", 96), 96), 128))
         terrain["mountain_height"] = max(8, min(self._int(terrain.get("mountain_height", 80), 80), 120))
         try:
@@ -67,12 +91,10 @@ class Planner:
         for raw in list(plan.get("builds", []))[:24]:
             if not isinstance(raw, dict): continue
             build = dict(raw)
-            for key, default in [("x", cx), ("y", cy + 3), ("z", cz), ("width", 10), ("depth", 10), ("height", 10)]:
-                build[key] = self._int(build.get(key, default), default)
+            for key, default in [("x", cx), ("y", cy + 3), ("z", cz), ("width", 10), ("depth", 10), ("height", 10)]: build[key] = self._int(build.get(key, default), default)
             build["x"] = self._clamp_coordinate(build["x"], cx); build["y"] = max(-64, min(320, build["y"])); build["z"] = self._clamp_coordinate(build["z"], cz)
             for key in ("width", "depth", "height"): build[key] = max(5, min(build[key], 64))
-            build["type"] = str(build.get("type", "house"))[:40]; build["style"] = str(build.get("style", "natural medieval"))[:100]
-            build["interior"] = bool(build.get("interior", True)); build["redstone"] = bool(build.get("redstone", False)); builds.append(build)
+            build["type"] = str(build.get("type", "house"))[:40]; build["style"] = str(build.get("style", "natural medieval"))[:100]; build["interior"] = bool(build.get("interior", True)); build["redstone"] = bool(build.get("redstone", False)); builds.append(build)
         plan["builds"] = builds
 
         roads = []
