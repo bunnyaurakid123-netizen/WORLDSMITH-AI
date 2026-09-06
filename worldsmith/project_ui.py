@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFileDialog, QMessageBox
+from PySide6.QtWidgets import QFileDialog, QMessageBox, QInputDialog
 
+from worldsmith.backup import list_backups, restore_world
 from worldsmith.project import WorldSmithProject
 
 
@@ -17,11 +18,14 @@ def install_project_menu(window) -> None:
     export_action = menu.addAction("Export Plan JSON…")
     repair_action = menu.addAction("Load Latest AI Repair Proposal")
     repair_action.setEnabled(False)
+    restore_action = menu.addAction("Restore World Snapshot…")
     window._repair_action = repair_action
+    window._restore_action = restore_action
     save_action.triggered.connect(lambda: save_project(window))
     load_action.triggered.connect(lambda: load_project(window))
     export_action.triggered.connect(lambda: export_plan(window))
     repair_action.triggered.connect(lambda: load_repair_proposal(window))
+    restore_action.triggered.connect(lambda: restore_snapshot(window))
 
 
 def _camera_state(window) -> dict[str, float]:
@@ -109,6 +113,40 @@ def load_repair_proposal(window) -> None:
             pass
     except Exception as exc:
         QMessageBox.critical(window, "AI Repair", str(exc))
+
+
+def restore_snapshot(window) -> None:
+    if not window.current:
+        QMessageBox.information(window, "Restore Snapshot", "Open a world first.")
+        return
+    backups = list_backups(window.current.path)
+    if not backups:
+        QMessageBox.information(window, "Restore Snapshot", "No snapshots were found for this world.")
+        return
+    labels = [f"{path.name} ({datetime_text(path)})" for path in backups[:30]]
+    choice, accepted = QInputDialog.getItem(window, "Restore World Snapshot", "Choose a snapshot:", labels, 0, False)
+    if not accepted:
+        return
+    index = labels.index(choice)
+    selected = backups[index]
+    confirm = QMessageBox.question(window, "Confirm restore", f"Restore {window.current.name} from:\n\n{selected}\n\nThe current world will be replaced by this snapshot.", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+    if confirm != QMessageBox.Yes:
+        return
+    try:
+        window.close_editor()
+        restore_world(window.current.path, selected, confirm=True)
+        window.open_selected()
+        window.statusBar().showMessage(f"World restored from {selected.name}")
+    except Exception as exc:
+        QMessageBox.critical(window, "Restore Snapshot", str(exc))
+
+
+def datetime_text(path: Path) -> str:
+    try:
+        from datetime import datetime
+        return datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+    except OSError:
+        return "unknown time"
 
 
 def export_plan(window) -> None:
