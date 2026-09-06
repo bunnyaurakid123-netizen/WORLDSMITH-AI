@@ -7,6 +7,7 @@ from PySide6.QtCore import QObject, QThread, Signal
 
 from worldsmith.audit import BuildAudit
 from worldsmith.backup import backup_world
+from worldsmith.generation.postcheck import PostBuildVerifier
 from worldsmith.world import WorldEditor
 import worldsmith.app as app_module
 
@@ -40,12 +41,21 @@ class BuildWorker(QObject):
             result = builder_class(editor.require_level(), seed=int(self.plan.get("seed", 1337))).build(self.plan)
             self.activity.emit("World I/O • saving generated changes")
             editor.save()
+            self.activity.emit("QA • verifying expected structures and roads")
+            verification = PostBuildVerifier(editor.require_level()).verify(self.plan)
+            if verification.issues:
+                for issue in verification.issues[:12]:
+                    self.activity.emit(f"QA • {issue.severity.upper()}: {issue.message}")
+            else:
+                self.activity.emit("QA • no post-build placement errors detected")
             editor.close()
             editor = None
+
+            audit.quality_issues.extend({"severity": i.severity, "message": i.message} for i in verification.issues)
             report_path = audit.finish(result, backup, started_monotonic=started).save()
             self.activity.emit(f"Audit • report saved to {report_path}")
             self.activity.emit("Generator • build complete")
-            self.finished.emit({"result": result, "backup": backup, "audit": str(report_path)})
+            self.finished.emit({"result": result, "backup": backup, "audit": str(report_path), "verification": verification})
         except Exception as exc:
             if editor is not None:
                 try:
@@ -96,12 +106,15 @@ def _build_finished(window, payload):
     result = payload["result"]
     backup = payload.get("backup")
     audit = payload.get("audit")
+    verification = payload.get("verification")
     message = (
         f"Built {result.blocks_changed:,} blocks • "
         f"{result.structures_changed:,} structures • "
         f"{result.interiors_changed:,} interior blocks • "
         f"{result.systems_changed:,} redstone blocks"
     )
+    if verification and not verification.passed:
+        message += f" • QA found {len(verification.issues)} issue(s)"
     if backup:
         message += f" • backup: {backup}"
     if audit:
