@@ -56,6 +56,8 @@ def build_plan_async(window) -> None:
         window.statusBar().showMessage("A build is already running")
         return
 
+    # Never keep the main Amulet handle open while the worker edits the same save.
+    window.close_editor()
     window.save_settings()
     window.build_button.setEnabled(False)
     window.plan_btn.setEnabled(False)
@@ -94,6 +96,11 @@ def _build_finished(window, payload):
     window.activity.appendPlainText("WorldSmith • " + message)
     window.statusBar().showMessage(message)
     window.build_button.setEnabled(False)
+    # Reopen the saved world so the inspector and live voxel preview reflect the result.
+    try:
+        window.open_selected()
+    except Exception as exc:
+        window.activity.appendPlainText(f"WorldSmith • refresh after build failed: {exc}")
 
 
 def _build_failed(window, message: str):
