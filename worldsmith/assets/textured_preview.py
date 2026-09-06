@@ -13,7 +13,7 @@ except ImportError:  # pragma: no cover
 
 
 class TexturedLiveWorldPreview(LiveWorldPreview):
-    """Live preview that uses discovered Minecraft/resource-pack textures when available."""
+    """Live preview with Minecraft/resource-pack textures and volumetric terrain columns."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -33,7 +33,8 @@ class TexturedLiveWorldPreview(LiveWorldPreview):
         if texture_id in self._texture_failed:
             return None
         try:
-            image = QImage.fromData(self.appearance_cache.catalog.texture_bytes(texture_id) or b"")
+            raw = self.appearance_cache.catalog.texture_bytes(texture_id)
+            image = QImage.fromData(raw or b"")
             if image.isNull():
                 self._texture_failed.add(texture_id)
                 return None
@@ -47,6 +48,46 @@ class TexturedLiveWorldPreview(LiveWorldPreview):
         except Exception:
             self._texture_failed.add(texture_id)
             return None
+
+    def _draw_column(self, x: float, top: float, z: float, bottom: float, half_size: float, material: str):
+        appearance = self.appearance_cache.resolve(material)
+        texture = self._texture_for(material)
+        x0, x1 = x - half_size, x + half_size
+        z0, z1 = z - half_size, z + half_size
+        y0, y1 = bottom, top
+
+        # Minecraft texture on the top face.
+        if texture is not None:
+            texture.bind()
+            GL.glColor4f(1.0, 1.0, 1.0, 1.0)
+            GL.glBegin(GL.GL_QUADS)
+            GL.glTexCoord2f(0.0, 0.0); GL.glVertex3f(x0, y1, z0)
+            GL.glTexCoord2f(1.0, 0.0); GL.glVertex3f(x1, y1, z0)
+            GL.glTexCoord2f(1.0, 1.0); GL.glVertex3f(x1, y1, z1)
+            GL.glTexCoord2f(0.0, 1.0); GL.glVertex3f(x0, y1, z1)
+            GL.glEnd()
+            texture.release()
+        else:
+            r, g, b = appearance.color
+            GL.glColor3f(r, g, b)
+            GL.glBegin(GL.GL_QUADS)
+            GL.glVertex3f(x0, y1, z0); GL.glVertex3f(x1, y1, z0)
+            GL.glVertex3f(x1, y1, z1); GL.glVertex3f(x0, y1, z1)
+            GL.glEnd()
+
+        # Directionally shaded side faces create actual volumetric terrain.
+        base = appearance.color
+        for shade, vertices in [
+            (0.78, (x0, y0, z0, x1, y0, z0, x1, y1, z0, x0, y1, z0)),
+            (0.62, (x1, y0, z0, x1, y0, z1, x1, y1, z1, x1, y1, z0)),
+            (0.55, (x1, y0, z1, x0, y0, z1, x0, y1, z1, x1, y1, z1)),
+            (0.70, (x0, y0, z1, x0, y0, z0, x0, y1, z0, x0, y1, z1)),
+        ]:
+            GL.glColor3f(base[0] * shade, base[1] * shade, base[2] * shade)
+            GL.glBegin(GL.GL_QUADS)
+            for i in range(0, 12, 3):
+                GL.glVertex3f(vertices[i], vertices[i + 1], vertices[i + 2])
+            GL.glEnd()
 
     def paintGL(self):
         if GL is None:
@@ -66,30 +107,11 @@ class TexturedLiveWorldPreview(LiveWorldPreview):
         min_h = min((p[2] for p in points), default=center[1])
         scale = 1.6
         step = float(self.snapshot["step"])
+        floor = min_h - max(3.0, (max_h - min_h) * 0.35)
 
-        GL.glEnable(GL.GL_TEXTURE_2D)
         for x, z, y, material in points:
             rx = (x - center[0]) * scale / max(1.0, step)
             rz = (z - center[2]) * scale / max(1.0, step)
             ry = ((y - (min_h + max_h) * 0.5) / max(1.0, max_h - min_h)) * 70.0
-            texture = self._texture_for(material)
-            if texture is not None:
-                texture.bind()
-                GL.glColor4f(1.0, 1.0, 1.0, 1.0)
-                GL.glBegin(GL.GL_QUADS)
-                s = 1.25
-                GL.glTexCoord2f(0.0, 0.0); GL.glVertex3f(rx - s, ry, rz - s)
-                GL.glTexCoord2f(1.0, 0.0); GL.glVertex3f(rx + s, ry, rz - s)
-                GL.glTexCoord2f(1.0, 1.0); GL.glVertex3f(rx + s, ry, rz + s)
-                GL.glTexCoord2f(0.0, 1.0); GL.glVertex3f(rx - s, ry, rz + s)
-                GL.glEnd()
-                texture.release()
-            else:
-                r, g, b = self.appearance_cache.resolve(material).color
-                GL.glColor3f(r, g, b)
-                GL.glBegin(GL.GL_QUADS)
-                s = 1.25
-                GL.glVertex3f(rx - s, ry, rz - s); GL.glVertex3f(rx + s, ry, rz - s)
-                GL.glVertex3f(rx + s, ry, rz + s); GL.glVertex3f(rx - s, ry, rz + s)
-                GL.glEnd()
-        GL.glDisable(GL.GL_TEXTURE_2D)
+            bottom = ((floor - (min_h + max_h) * 0.5) / max(1.0, max_h - min_h)) * 70.0
+            self._draw_column(rx, ry, rz, bottom, 1.25, material)
