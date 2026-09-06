@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 
 from .minecraft import MinecraftAssetCatalog
 
@@ -10,6 +11,19 @@ class Appearance:
     color: tuple[float, float, float]
     texture_id: str | None = None
     model_id: str | None = None
+
+
+def normalize_block_id(block) -> str:
+    """Convert an Amulet Block or string representation into namespace:name."""
+    if hasattr(block, "namespace") and hasattr(block, "base_name"):
+        return f"{getattr(block, 'namespace')}:{getattr(block, 'base_name')}"
+    if hasattr(block, "base_name"):
+        return f"minecraft:{getattr(block, 'base_name')}"
+    value = str(block).strip()
+    match = re.search(r"([A-Za-z0-9_.-]+:[A-Za-z0-9_./-]+)", value)
+    if match:
+        return match.group(1)
+    return value
 
 
 class BlockAppearanceCache:
@@ -39,7 +53,7 @@ class BlockAppearanceCache:
         return Appearance(color)
 
     def resolve(self, block_id: str) -> Appearance:
-        block_id = str(block_id)
+        block_id = normalize_block_id(block_id)
         if block_id in self.cache:
             return self.cache[block_id]
         appearance = self._fallback(block_id)
@@ -64,7 +78,6 @@ class BlockAppearanceCache:
                         from PySide6.QtGui import QImage
                         image = QImage.fromData(self.catalog.texture_bytes(texture_id, source) or b"")
                         if not image.isNull():
-                            # A central sample is inexpensive and noticeably more faithful than material heuristics.
                             pixel = image.pixelColor(max(0, image.width() // 2), max(0, image.height() // 2))
                             color = (pixel.redF(), pixel.greenF(), pixel.blueF())
                             appearance = Appearance(color, texture_id=texture_id, model_id=model_id)
