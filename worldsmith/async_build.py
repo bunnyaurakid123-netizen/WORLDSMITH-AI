@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Signal
 
+from worldsmith.ai.repair import PlanRepairAgent
 from worldsmith.audit import BuildAudit
 from worldsmith.backup import backup_world
 from worldsmith.generation.postcheck import PostBuildVerifier
@@ -17,10 +19,11 @@ class BuildWorker(QObject):
     failed = Signal(str)
     activity = Signal(str)
 
-    def __init__(self, world_path: Path, plan: dict, auto_backup: bool):
+    def __init__(self, world_path: Path, plan: dict, settings, auto_backup: bool):
         super().__init__()
         self.world_path = Path(world_path)
         self.plan = plan
+        self.settings = settings
         self.auto_backup = bool(auto_backup)
 
     def run(self):
@@ -52,10 +55,35 @@ class BuildWorker(QObject):
             editor = None
 
             audit.quality_issues.extend({"severity": i.severity, "message": i.message} for i in verification.issues)
-            report_path = audit.finish(result, backup, started_monotonic=started).save()
+
+            repair_plan_path = None
+            repair_errors: list[str] = []
+            if verification.issues:
+                repair_issues = [{"severity": i.severity, "message": i.message} for i in verification.issues]
+                repair = PlanRepairAgent(self.settings).repair(self.plan, repair_issues, activity=self.activity.emit)
+                repair_errors.extend(repair.errors)
+                audit.repair_provider = repair.provider
+                if repair.provider != "none":
+                    repair_root = Path.home() / ".worldsmith" / "repairs"
+                    repair_root.mkdir(parents=True, exist_ok=True)
+                    stamp = time.strftime("%Y%m%d-%H%M%S")
+                    repair_plan_path = repair_root / f"repair-{stamp}.json"
+                    repair_plan_path.write_text(json.dumps(repair.plan, indent=2), encoding="utf-8")
+                    audit.repair_plan_path = str(repair_plan_path)
+                    self.activity.emit(f"Repair AI • approval-stage plan saved to {repair_plan_path}")
+                else:
+                    self.activity.emit("Repair AI • no provider produced an approval-stage plan")
+
+            report_path = audit.finish(result, backup, errors=repair_errors or None, started_monotonic=started).save()
             self.activity.emit(f"Audit • report saved to {report_path}")
             self.activity.emit("Generator • build complete")
-            self.finished.emit({"result": result, "backup": backup, "audit": str(report_path), "verification": verification})
+            self.finished.emit({
+                "result": result,
+                "backup": backup,
+                "audit": str(report_path),
+                "verification": verification,
+                "repair_plan": str(repair_plan_path) if repair_plan_path else None,
+            })
         except Exception as exc:
             if editor is not None:
                 try:
@@ -86,7 +114,7 @@ def build_plan_async(window) -> None:
     window.activity.appendPlainText("WorldSmith • starting background build")
 
     thread = QThread(window)
-    worker = BuildWorker(window.current.path, window.last_plan, window.settings.auto_backup)
+    worker = BuildWorker(window.current.path, window.last_plan, window.settings, window.settings.auto_backup)
     worker.moveToThread(thread)
     thread.started.connect(worker.run)
     worker.activity.connect(window.activity.appendPlainText)
@@ -107,6 +135,7 @@ def _build_finished(window, payload):
     backup = payload.get("backup")
     audit = payload.get("audit")
     verification = payload.get("verification")
+    repair_plan = payload.get("repair_plan")
     message = (
         f"Built {result.blocks_changed:,} blocks • "
         f"{result.structures_changed:,} structures • "
@@ -115,6 +144,8 @@ def _build_finished(window, payload):
     )
     if verification and not verification.passed:
         message += f" • QA found {len(verification.issues)} issue(s)"
+    if repair_plan:
+        message += " • repair suggestion ready"
     if backup:
         message += f" • backup: {backup}"
     if audit:
