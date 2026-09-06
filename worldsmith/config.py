@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 import json
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
 
 @dataclass
 class Settings:
@@ -11,18 +13,23 @@ class Settings:
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "gemma3"
     openai_model: str = "gpt-5"
-    gemini_model: str = "gemini-3.7-flash"
+    gemini_model: str = "gemini-3.8-flash"
     auto_backup: bool = True
     protect_player_builds: bool = True
     default_radius: int = 96
+    google_client_secret: str = ""
+    google_name: str = ""
+    google_email: str = ""
 
     @classmethod
     def load(cls, path: Path) -> "Settings":
-        if not path.exists(): return cls()
+        if not path.exists():
+            return cls()
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            return cls(**{k:v for k,v in data.items() if k in cls.__dataclass_fields__})
-        except (OSError, ValueError, TypeError): return cls()
+            return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+        except (OSError, ValueError, TypeError):
+            return cls()
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
