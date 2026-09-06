@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-worldsmith = "worldsmith.app:main"
+worldsmith = "worldsmith.launcher:main"
 
 [tool.setuptools.packages.find]
 include = ["worldsmith*"]
