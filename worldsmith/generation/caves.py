@@ -47,17 +47,15 @@ def _noise3(x: float, y: float, z: float, seed: int) -> float:
 
 
 def _fbm3(x: float, y: float, z: float, seed: int, octaves: int = 4) -> float:
-    total = amplitude = 0.0
+    total = 0.0
+    amplitude = 1.0
     frequency = 1.0
     norm = 0.0
     for index in range(octaves):
-        total += _noise3(x * frequency, y * frequency, z * frequency, seed + index * 911)
+        total += _noise3(x * frequency, y * frequency, z * frequency, seed + index * 911) * amplitude
         norm += amplitude
-        amplitude = 0.5 if index == 0 else amplitude * 0.5
+        amplitude *= 0.5
         frequency *= 2.0
-    # Keep the first octave meaningful even though norm starts at zero.
-    if norm <= 0.0:
-        return _noise3(x, y, z, seed)
     return total / max(1.0, norm)
 
 
@@ -74,9 +72,6 @@ class CavePass:
         self.version = (getattr(wrapper, "platform", "java"), getattr(wrapper, "max_world_version", getattr(wrapper, "version", (1, 20, 4))))
         self._air = Block("minecraft", "air")
 
-    def _surface(self, x: int, z: int, base_y: int, mountain_height: int, roughness: float, height_fn) -> int:
-        return int(height_fn(x, z, base_y, mountain_height, roughness))
-
     def carve(self, center: tuple[int, int, int], radius: int, base_y: int, mountain_height: int, roughness: float, height_fn) -> CaveReport:
         cx, _, cz = center
         radius = max(16, min(int(radius), 96))
@@ -87,13 +82,12 @@ class CavePass:
                 dx, dz = x - cx, z - cz
                 if math.hypot(dx, dz) > radius:
                     continue
-                surface = self._surface(dx, dz, base_y, mountain_height, roughness, height_fn)
+                surface = int(height_fn(dx, dz, base_y, mountain_height, roughness))
                 if surface <= base_y + 12:
                     continue
 
                 max_depth = min(surface - 6, base_y + int(mountain_height * 0.72))
-                min_depth = base_y + 5
-                for y in range(min_depth, max_depth, 2):
+                for y in range(base_y + 5, max_depth, 2):
                     rel_y = (y - base_y) / max(1.0, mountain_height)
                     if rel_y < 0.10:
                         continue
