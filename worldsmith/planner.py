@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from worldsmith.ai.critic import PlanCritic
 from worldsmith.ai.orchestrator import Ensemble, EnsembleResult
 from worldsmith.analysis.spatial import analyze_save
 from worldsmith.generation.quality import repair_plan
@@ -52,6 +53,32 @@ class Planner:
         context = self._augment_world_context(context, center, activity)
         result = self.ensemble.plan(request, context, center, activity=activity)
         sanitized = self._sanitize(result.plan, center)
+
+        critic = PlanCritic(self.ensemble.settings)
+        critique_result = critic.review(sanitized, context, activity=activity)
+        if critique_result.reviews:
+            sanitized["_critic"] = {
+                "average_score": critique_result.average_score,
+                "providers": [review.provider for review in critique_result.reviews],
+                "feedback": critique_result.feedback(),
+            }
+            if activity:
+                activity(f"Critic • ensemble average score={critique_result.average_score:.1f}")
+
+            revision_enabled = bool(getattr(self.ensemble.settings, "auto_revision", True))
+            revision_threshold = float(getattr(self.ensemble.settings, "revision_threshold", 82.0))
+            if revision_enabled and critique_result.average_score < revision_threshold and critique_result.feedback():
+                revised, provider, revision_errors = critic.revise(sanitized, critique_result, context, activity=activity)
+                if provider:
+                    sanitized = self._sanitize(revised, center)
+                    sanitized["_critic"] = {
+                        "average_score": critique_result.average_score,
+                        "revision_provider": provider,
+                        "feedback": critique_result.feedback(),
+                    }
+                elif revision_errors and activity:
+                    activity("Critic • all revision providers failed; retaining original plan")
+
         repaired, issues = repair_plan(sanitized)
         if activity and issues:
             activity(f"Quality AI • found {len(issues)} layout issue(s); applied deterministic repairs")
@@ -114,6 +141,17 @@ class Planner:
             build["style"] = str(build.get("style", "natural medieval"))[:100]
             build["interior"] = bool(build.get("interior", True))
             build["redstone"] = bool(build.get("redstone", False))
+            design = build.get("architecture")
+            if isinstance(design, dict):
+                cleaned = {
+                    "roof": str(design.get("roof", "gabled"))[:30],
+                    "window_style": str(design.get("window_style", build["style"]))[:40],
+                    "chimney": bool(design.get("chimney", False)),
+                    "balcony": bool(design.get("balcony", False)),
+                    "courtyard": bool(design.get("courtyard", False)),
+                    "room_types": [str(room)[:32] for room in list(design.get("room_types", []))[:8]],
+                }
+                build["architecture"] = cleaned
             builds.append(build)
         plan["builds"] = builds
 
