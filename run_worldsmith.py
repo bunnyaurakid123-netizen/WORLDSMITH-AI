@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from worldsmith.launcher import main
+from worldsmith.studio_v2 import main
 
 
 if __name__ == "__main__":
