@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable
 
 from worldsmith.backup import backup_world
-from worldsmith.generation.builder import WorldBuilder
+from worldsmith.generation.advanced_builder import AdvancedWorldBuilder
 from worldsmith.generation.postcheck import PostBuildVerifier
 from worldsmith.memory import MemoryStore
 from worldsmith.planner import PlanResult, Planner
@@ -52,12 +52,8 @@ class WorldSmithAgent:
         try:
             summary = editor.open()
             return (
-                f"World path: {world_path}\n"
-                f"Platform: {summary.platform}\n"
-                f"Version: {summary.version}\n"
-                f"Dimensions: {', '.join(summary.dimensions)}\n"
-                f"Chunks: {summary.chunks}\n"
-                f"Bounds: {summary.bounds}"
+                f"World path: {world_path}\nPlatform: {summary.platform}\nVersion: {summary.version}\n"
+                f"Dimensions: {', '.join(summary.dimensions)}\nChunks: {summary.chunks}\nBounds: {summary.bounds}"
             )
         except Exception as exc:
             return f"World path: {world_path}\nWorld inspection unavailable: {exc}"
@@ -114,8 +110,8 @@ class WorldSmithAgent:
             run.emit("Agent • opening Minecraft save", activity)
             editor = WorldEditor(run.world_path)
             editor.open()
-            run.emit("Agent • executing validated world plan", activity)
-            result = WorldBuilder(editor.require_level(), seed=int(run.plan.get("seed", 1337))).build(run.plan)
+            run.emit("Agent • executing advanced world pipeline", activity)
+            result = AdvancedWorldBuilder(editor.require_level(), seed=int(run.plan.get("seed", 1337))).build(run.plan)
             editor.save()
             run.summary.update({
                 "blocks_changed": int(getattr(result, "blocks_changed", 0)),
