@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .architecture import enhance_structure
 from .bridges import BridgeBuilder
 from .builder import BuildResult, WorldBuilder
 from .caves import CavePass
@@ -66,6 +67,9 @@ class AdvancedWorldBuilder(WorldBuilder):
             for yy in range(y + 2, y + h + 1):
                 self.put(px, yy, pz, palette.trim)
                 result.blocks_changed += 1
+        design_result = enhance_structure(self, b, palette, kind)
+        result.blocks_changed += design_result.blocks
+        result.interiors_changed += design_result.interior
         if b.get("interior", True):
             result.interiors_changed += self.interior(x, y, z, w, d, h, kind)
         if kind in {"tower", "watchtower"}:
@@ -91,6 +95,9 @@ class AdvancedWorldBuilder(WorldBuilder):
             for yy in range(y + 2, y + h + 2):
                 self.put(x + dx, yy, z - d // 2 - 1, palette.trim)
                 result.blocks_changed += 1
+        design_result = enhance_structure(self, b, palette, "castle")
+        result.blocks_changed += design_result.blocks
+        result.interiors_changed += design_result.interior
         result.interiors_changed += self.interior(x, y, z, w, d, h, "castle")
         if b.get("redstone"):
             result.systems_changed += self.redstone_gate(x, y + 1, z - d // 2 - 2)
