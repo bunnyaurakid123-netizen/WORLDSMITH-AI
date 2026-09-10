@@ -72,7 +72,6 @@ def score_plan(plan: dict) -> float:
     if terrain.get("caves", False): score += 2.0
     if str(plan.get("style", "")).strip(): score += 3.0
     if str(plan.get("summary", "")).strip(): score += 2.0
-    # Penalize repeated dimensions: variation is a simple proxy for authored composition.
     dimensions = {(b.get("width"), b.get("depth"), b.get("height")) for b in builds}
     if builds:
         score += min(8.0, len(dimensions) * 0.7)
@@ -83,7 +82,7 @@ def score_plan(plan: dict) -> float:
 
 
 def built_in_plan(prompt, center=(0, 100, 0), radius=96):
-    """Offline fallback that still produces a complete small world plan."""
+    """Offline fallback that still produces a complete bounded world plan."""
     x, y, z = center
     lower = prompt.lower()
     city = any(word in lower for word in ("city", "town", "kingdom", "capital"))
@@ -104,10 +103,7 @@ def built_in_plan(prompt, center=(0, 100, 0), radius=96):
         ])
     if coast:
         builds.append({"type": "lighthouse", "x": x + 56, "y": y + 3, "z": z - 52, "width": 11, "depth": 11, "height": 32, "style": "coastal stone", "interior": True, "redstone": True})
-    roads = [
-        {"x1": x, "z1": z, "x2": b["x"], "z2": b["z"], "y": y + 4, "width": 3}
-        for b in builds[1:7]
-    ]
+    roads = [{"x1": x, "z1": z, "x2": b["x"], "z2": b["z"], "y": y + 4, "width": 3} for b in builds[1:7]]
     bridges = []
     if city:
         bridges.append({"type": "stone_bridge", "x": x - 8, "y": y + 6, "z": z + 10, "x2": x + 18, "z2": z + 10, "width": 4})
@@ -116,12 +112,13 @@ def built_in_plan(prompt, center=(0, 100, 0), radius=96):
         "style": style,
         "seed": 1337,
         "center": [x, y, z],
+        "safety": {"preserve_existing": True, "allow_terrain_regeneration": False, "max_blocks": 1_500_000},
         "terrain": {"enabled": True, "radius": radius, "mountain_height": 88 if snowy else 76, "roughness": 1.15, "water": True, "vegetation": True, "caves": True},
         "builds": builds,
         "roads": roads,
         "bridges": bridges,
         "operations": [],
-        "notes": ["Offline deterministic fallback plan", "Use the generated plan as a safe baseline when no model is reachable."],
+        "notes": ["Offline deterministic fallback plan", "Fallback obeys the same preservation budget as model-generated plans."],
     }
 
 
@@ -186,11 +183,7 @@ class Ensemble:
         score_map = {provider: score for score, _, provider in plans}
         emit("Arbiter • ranking candidates before final reconciliation")
         shortlisted = [plan for _, plan, _ in plans[:3]]
-        judge_prompt = (
-            SYSTEM_PROMPT
-            + "\nYou are the final WorldSmith architect. Reconcile the shortlisted candidates below. Preserve the strongest ideas, remove conflicts, improve spatial composition, and return ONE complete schema-valid plan. Do not merely copy one candidate.\n"
-            + json.dumps(shortlisted, indent=2)[:36000]
-        )
+        judge_prompt = SYSTEM_PROMPT + "\nYou are the final WorldSmith architect. Reconcile the shortlisted candidates below. Preserve the strongest ideas, remove conflicts, improve spatial composition, and return ONE complete schema-valid plan. Do not merely copy one candidate.\n" + json.dumps(shortlisted, indent=2)[:36000]
         chosen = None
         judge_name = None
         judge_order = []
@@ -208,7 +201,6 @@ class Ensemble:
                 candidate = extract_json(judge_response.text)
                 chosen_score = score_plan(candidate)
                 best_score = plans[0][0]
-                # Reject a judge output that is materially worse than the best candidate.
                 if chosen_score + 6.0 < best_score:
                     raise ValueError(f"judge score {chosen_score:.2f} below candidate floor {best_score - 6.0:.2f}")
                 chosen = candidate
