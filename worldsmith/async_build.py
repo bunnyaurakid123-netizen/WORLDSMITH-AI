@@ -10,6 +10,7 @@ from worldsmith.ai.repair import PlanRepairAgent
 from worldsmith.audit import BuildAudit
 from worldsmith.backup import backup_world
 from worldsmith.generation.postcheck import PostBuildVerifier
+from worldsmith.memory import MemoryStore
 from worldsmith.world import WorldEditor
 import worldsmith.app as app_module
 
@@ -30,6 +31,7 @@ class BuildWorker(QObject):
         editor = None
         started = time.monotonic()
         audit = BuildAudit.start(self.world_path, self.plan)
+        memory = MemoryStore(Path.home() / ".worldsmith" / "memory.db")
         try:
             backup = None
             if self.auto_backup:
@@ -51,11 +53,9 @@ class BuildWorker(QObject):
                     self.activity.emit(f"QA • {issue.severity.upper()}: {issue.message}")
             else:
                 self.activity.emit("QA • no post-build placement errors detected")
-            editor.close()
-            editor = None
+            editor.close(); editor = None
 
             audit.quality_issues.extend({"severity": i.severity, "message": i.message} for i in verification.issues)
-
             repair_plan_path = None
             repair_errors: list[str] = []
             if verification.issues:
@@ -74,6 +74,17 @@ class BuildWorker(QObject):
                 else:
                     self.activity.emit("Repair AI • no provider produced an approval-stage plan")
 
+            status = "verified" if not verification.issues else "verified-with-issues"
+            score = self.plan.get("_candidate_scores", {})
+            try:
+                score_value = max((float(v) for v in score.values()), default=None)
+            except (TypeError, ValueError):
+                score_value = None
+            feedback = ""
+            if verification.issues:
+                feedback = "; ".join(i.message for i in verification.issues[:6])
+            memory.save_outcome(str(self.world_path), str(self.plan.get("summary", "WorldSmith build")), status, score_value, feedback)
+
             report_path = audit.finish(result, backup, errors=repair_errors or None, started_monotonic=started).save()
             self.activity.emit(f"Audit • report saved to {report_path}")
             self.activity.emit("Generator • build complete")
@@ -84,6 +95,10 @@ class BuildWorker(QObject):
                     editor.close()
                 except Exception:
                     pass
+            try:
+                memory.save_outcome(str(self.world_path), str(self.plan.get("summary", "WorldSmith build")), "failed", None, str(exc))
+            except Exception:
+                pass
             try:
                 report_path = audit.finish(backup_path=locals().get("backup"), errors=[str(exc)], started_monotonic=started).save()
                 self.activity.emit(f"Audit • failure report saved to {report_path}")
