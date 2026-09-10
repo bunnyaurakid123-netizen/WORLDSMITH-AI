@@ -1,5 +1,20 @@
 from __future__ import annotations
 
+
+_ARCHITECTURE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "roof": {"type": "string"},
+        "window_style": {"type": "string"},
+        "chimney": {"type": "boolean"},
+        "balcony": {"type": "boolean"},
+        "courtyard": {"type": "boolean"},
+        "room_types": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
+
 WORLD_PLAN_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -9,21 +24,13 @@ WORLD_PLAN_SCHEMA = {
         "seed": {"type": "integer"},
         "center": {"type": "array", "items": {"type": "integer"}, "minItems": 3, "maxItems": 3},
         "safety": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "preserve_existing": {"type": "boolean"},
-                "allow_terrain_regeneration": {"type": "boolean"},
-                "max_blocks": {"type": "integer"},
-            },
+            "type": "object", "additionalProperties": False,
+            "properties": {"preserve_existing": {"type": "boolean"}, "allow_terrain_regeneration": {"type": "boolean"}, "max_blocks": {"type": "integer"}},
             "required": ["preserve_existing", "allow_terrain_regeneration", "max_blocks"],
         },
         "terrain": {
             "type": "object", "additionalProperties": False,
-            "properties": {
-                "enabled": {"type": "boolean"}, "radius": {"type": "integer"}, "mountain_height": {"type": "integer"},
-                "roughness": {"type": "number"}, "water": {"type": "boolean"}, "vegetation": {"type": "boolean"}, "caves": {"type": "boolean"},
-            },
+            "properties": {"enabled": {"type": "boolean"}, "radius": {"type": "integer"}, "mountain_height": {"type": "integer"}, "roughness": {"type": "number"}, "water": {"type": "boolean"}, "vegetation": {"type": "boolean"}, "caves": {"type": "boolean"}},
             "required": ["enabled", "radius", "mountain_height", "roughness", "water", "vegetation", "caves"],
         },
         "builds": {"type": "array", "items": {
@@ -31,7 +38,7 @@ WORLD_PLAN_SCHEMA = {
             "properties": {
                 "type": {"type": "string"}, "x": {"type": "integer"}, "y": {"type": "integer"}, "z": {"type": "integer"},
                 "width": {"type": "integer"}, "depth": {"type": "integer"}, "height": {"type": "integer"}, "style": {"type": "string"},
-                "interior": {"type": "boolean"}, "redstone": {"type": "boolean"},
+                "interior": {"type": "boolean"}, "redstone": {"type": "boolean"}, "architecture": _ARCHITECTURE_SCHEMA,
             },
             "required": ["type", "x", "y", "z", "width", "depth", "height", "style", "interior", "redstone"],
         }},
