@@ -2,22 +2,18 @@
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 hiddenimports = collect_submodules('worldsmith')
+datas = []
+binaries = []
 
-# Runtime-loaded packages used by WorldSmith's provider/auth layers.
-for package in ('amulet', 'google.genai', 'google.auth', 'google.oauth2', 'keyring'):
+# Runtime-loaded packages used by the world engine, AI providers and Windows auth/storage.
+for package in ('amulet', 'google.genai', 'google.auth', 'google.oauth2', 'google_auth_oauthlib', 'keyring'):
     try:
         pkg_data, pkg_bins, pkg_hidden = collect_all(package)
-        hiddenimports += pkg_hidden
-        datas += pkg_data if 'datas' in globals() else pkg_data
-        binaries += pkg_bins if 'binaries' in globals() else pkg_bins
+        datas.extend(pkg_data)
+        binaries.extend(pkg_bins)
+        hiddenimports.extend(pkg_hidden)
     except Exception:
         pass
-
-try:
-    datas, binaries, amulet_hidden = collect_all('amulet')
-    hiddenimports += amulet_hidden
-except Exception:
-    datas, binaries = [], []
 
 hiddenimports += [
     'google.genai',
@@ -28,9 +24,6 @@ hiddenimports += [
     'google_auth_oauthlib.flow',
     'keyring.backends.Windows',
 ]
-
-datas = datas or []
-binaries = binaries or []
 
 analysis = Analysis(
     ['run_worldsmith.py'],
