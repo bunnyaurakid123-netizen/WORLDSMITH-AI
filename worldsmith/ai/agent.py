@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable
 
 from worldsmith.backup import backup_world
-from worldsmith.generation.advanced_builder import AdvancedWorldBuilder
+from worldsmith.generation.production_builder import ProductionWorldBuilder
 from worldsmith.generation.postcheck import PostBuildVerifier
 from worldsmith.memory import MemoryStore
 from worldsmith.planner import PlanResult, Planner
@@ -110,8 +110,8 @@ class WorldSmithAgent:
             run.emit("Agent • opening Minecraft save", activity)
             editor = WorldEditor(run.world_path)
             editor.open()
-            run.emit("Agent • executing advanced world pipeline", activity)
-            result = AdvancedWorldBuilder(editor.require_level(), seed=int(run.plan.get("seed", 1337))).build(run.plan)
+            run.emit("Agent • executing production world pipeline", activity)
+            result = ProductionWorldBuilder(editor.require_level(), seed=int(run.plan.get("seed", 1337))).build(run.plan)
             editor.save()
             run.summary.update({
                 "blocks_changed": int(getattr(result, "blocks_changed", 0)),
