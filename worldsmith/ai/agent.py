@@ -11,7 +11,6 @@ from worldsmith.generation.builder import WorldBuilder
 from worldsmith.generation.postcheck import PostBuildVerifier
 from worldsmith.memory import MemoryStore
 from worldsmith.planner import PlanResult, Planner
-from worldsmith.scanner import SaveInfo
 from worldsmith.world import WorldEditor
 
 
@@ -39,15 +38,9 @@ class AgentRun:
 
 
 class WorldSmithAgent:
-    """End-to-end safe agent: inspect -> plan -> validate -> execute -> verify."""
+    """End-to-end safe agent: inspect -> plan -> execute -> verify."""
 
-    def __init__(
-        self,
-        planner: Planner,
-        memory: MemoryStore | None = None,
-        auto_backup: bool = True,
-        protect_player_builds: bool = True,
-    ):
+    def __init__(self, planner: Planner, memory: MemoryStore | None = None, auto_backup: bool = True, protect_player_builds: bool = True):
         self.planner = planner
         self.memory = memory
         self.auto_backup = bool(auto_backup)
@@ -55,35 +48,30 @@ class WorldSmithAgent:
 
     @staticmethod
     def _context(world_path: Path) -> str:
+        editor = WorldEditor(world_path)
         try:
-            with WorldEditor(world_path) as editor:
-                summary = editor.open()
-                return (
-                    f"World path: {world_path}\n"
-                    f"Platform: {summary.platform}\n"
-                    f"Version: {summary.version}\n"
-                    f"Dimensions: {', '.join(summary.dimensions)}\n"
-                    f"Chunks: {summary.chunks}\n"
-                    f"Bounds: {summary.bounds}"
-                )
+            summary = editor.open()
+            return (
+                f"World path: {world_path}\n"
+                f"Platform: {summary.platform}\n"
+                f"Version: {summary.version}\n"
+                f"Dimensions: {', '.join(summary.dimensions)}\n"
+                f"Chunks: {summary.chunks}\n"
+                f"Bounds: {summary.bounds}"
+            )
         except Exception as exc:
             return f"World path: {world_path}\nWorld inspection unavailable: {exc}"
+        finally:
+            editor.close()
 
-    def plan(
-        self,
-        request: str,
-        world_path: Path,
-        center: tuple[int, int, int] = (0, 100, 0),
-        activity: Activity | None = None,
-    ) -> AgentRun:
+    def plan(self, request: str, world_path: Path, center: tuple[int, int, int] = (0, 100, 0), activity: Activity | None = None) -> AgentRun:
         run = AgentRun(request=request, world_path=Path(world_path), center=tuple(map(int, center)))
         started = time.perf_counter()
         try:
             run.emit("Agent • inspecting world metadata", activity)
             context = self._context(run.world_path)
             if self.memory:
-                memory_context = self.memory.build_context(request, str(run.world_path))
-                context += "\n\nLONG-TERM MEMORY:\n" + memory_context
+                context += "\n\nLONG-TERM MEMORY:\n" + self.memory.build_context(request, str(run.world_path))
             context += "\n\nPLAYER BUILD PROTECTION=" + str(self.protect_player_builds)
             result: PlanResult = self.planner.make_plan(request, context, run.center, activity=lambda m: run.emit(m, activity))
             run.plan = result.plan
@@ -112,11 +100,7 @@ class WorldSmithAgent:
             run.elapsed_seconds = time.perf_counter() - started
         return run
 
-    def execute(
-        self,
-        run: AgentRun,
-        activity: Activity | None = None,
-    ) -> AgentRun:
+    def execute(self, run: AgentRun, activity: Activity | None = None) -> AgentRun:
         if not run.plan:
             run.status = "failed"
             run.errors.append("No plan available")
@@ -130,15 +114,30 @@ class WorldSmithAgent:
             run.emit("Agent • opening Minecraft save", activity)
             editor = WorldEditor(run.world_path)
             editor.open()
-            run.emit("Agent • executing world generation", activity)
+            run.emit("Agent • executing validated world plan", activity)
             result = WorldBuilder(editor.require_level(), seed=int(run.plan.get("seed", 1337))).build(run.plan)
             editor.save()
+            run.summary.update({
+                "blocks_changed": int(getattr(result, "blocks_changed", 0)),
+                "structures_changed": int(getattr(result, "structures_changed", 0)),
+                "interiors_changed": int(getattr(result, "interiors_changed", 0)),
+                "roads_changed": int(getattr(result, "roads_changed", 0)),
+                "redstone_blocks": int(getattr(result, "systems_changed", 0)),
+            })
             run.emit("Agent • save committed", activity)
-            editor.close()
-            editor = None
-            run.emit("Agent • running post-build verification", activity)
-            run.verification = PostBuildVerifier(WorldEditor(run.world_path).require_level()).verify(run.plan) if False else None
-            # Re-open for factual verification; do not reuse a closed level handle.
+        except Exception as exc:
+            run.status = "failed"
+            run.errors.append(str(exc))
+            run.emit(f"Agent • execution failed: {exc}", activity)
+            return run
+        finally:
+            if editor is not None:
+                try:
+                    editor.close()
+                except Exception:
+                    pass
+        try:
+            run.emit("Agent • reopening save for factual verification", activity)
             verifier_editor = WorldEditor(run.world_path)
             verifier_editor.open()
             try:
@@ -146,15 +145,8 @@ class WorldSmithAgent:
             finally:
                 verifier_editor.close()
             issues = list(getattr(run.verification, "issues", []))
-            run.summary.update({
-                "blocks_changed": int(getattr(result, "blocks_changed", 0)),
-                "structures_changed": int(getattr(result, "structures_changed", 0)),
-                "interiors_changed": int(getattr(result, "interiors_changed", 0)),
-                "roads_changed": int(getattr(result, "roads_changed", 0)),
-                "redstone_blocks": int(getattr(result, "systems_changed", 0)),
-                "verification_passed": not issues,
-                "verification_issues": [getattr(i, "message", str(i)) for i in issues],
-            })
+            run.summary["verification_passed"] = not issues
+            run.summary["verification_issues"] = [getattr(i, "message", str(i)) for i in issues]
             if issues:
                 run.status = "needs-repair"
                 run.emit(f"Agent • verification found {len(issues)} issue(s)", activity)
@@ -162,15 +154,10 @@ class WorldSmithAgent:
                 run.status = "completed"
                 run.emit("Agent • generation verified successfully", activity)
         except Exception as exc:
-            run.status = "failed"
-            run.errors.append(str(exc))
-            run.emit(f"Agent • execution failed: {exc}", activity)
+            run.status = "needs-verification"
+            run.errors.append(f"verification: {exc}")
+            run.emit(f"Agent • verification unavailable: {exc}", activity)
         finally:
-            if editor is not None:
-                try:
-                    editor.close()
-                except Exception:
-                    pass
             run.elapsed_seconds += time.perf_counter() - started
         return run
 
