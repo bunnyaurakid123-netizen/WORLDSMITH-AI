@@ -5,7 +5,9 @@ import json
 from dataclasses import dataclass
 from typing import Callable
 
+from .orchestrator import score_plan
 from .providers import AIResponse, call_gemini, call_ollama, call_openai
+from .schema import WORLD_PLAN_SCHEMA
 
 
 PLAN_REVIEW_SCHEMA = {
@@ -56,9 +58,12 @@ class CriticResult:
 
 
 def _extract_json(text: str) -> dict:
-    value = json.loads(str(text).strip())
+    raw = str(text).strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+    value = json.loads(raw)
     if not isinstance(value, dict):
-        raise ValueError("reviewer output is not an object")
+        raise ValueError("model output is not an object")
     return value
 
 
@@ -69,6 +74,16 @@ def _review_prompt(plan: dict, world_context: str) -> str:
         "architectural variety, interior intent, road/bridge connectivity, redstone intent, performance and safety. "
         "Return ONLY the requested JSON review. Keep issues actionable and concise.\n\n"
         "WORLD CONTEXT:\n" + world_context[:10000] + "\n\nPLAN:\n" + json.dumps(plan, indent=2)[:28000]
+    )
+
+
+def _revision_prompt(plan: dict, feedback: list[str], world_context: str) -> str:
+    return (
+        "You are WorldSmith's senior revision architect. Improve the supplied Minecraft Java plan using the critic feedback. "
+        "Return ONE complete schema-valid plan. Preserve what already works; do not shrink the build just to make the score look better. "
+        "Do not invent destructive operations. Preserve the safety policy and stay within its max block budget. "
+        "Resolve conflicting coordinates, improve variety and connectivity, and make architecture more intentional.\n\n"
+        "WORLD CONTEXT:\n" + world_context[:9000] + "\n\nCRITIC FEEDBACK:\n- " + "\n- ".join(feedback[:18]) + "\n\nPLAN:\n" + json.dumps(plan, indent=2)[:30000]
     )
 
 
@@ -112,3 +127,34 @@ class PlanCritic:
                     if activity:
                         activity(f"{provider.title()} • critic failed: {exc}")
         return CriticResult(reviews, errors)
+
+    def revise(self, plan: dict, critic: CriticResult, world_context: str = "", activity: Callable[[str], None] | None = None) -> tuple[dict, str | None, list[str]]:
+        feedback = critic.feedback()
+        if not feedback:
+            return plan, None, []
+        prompt = _revision_prompt(plan, feedback, world_context)
+        providers: list[tuple[str, Callable[[], AIResponse]]] = []
+        if self.settings.openai_key:
+            providers.append(("openai", lambda: call_openai(self.settings.openai_key, self.settings.openai_model, prompt, self.settings.ai_reasoning, WORLD_PLAN_SCHEMA)))
+        if self.settings.gemini_key:
+            level = self.settings.ai_reasoning if str(self.settings.ai_reasoning).lower() in {"low", "medium", "high"} else "high"
+            providers.append(("gemini", lambda: call_gemini(self.settings.gemini_key, self.settings.gemini_model, prompt, level, WORLD_PLAN_SCHEMA)))
+        providers.append(("ollama", lambda: call_ollama(self.settings.ollama_url, self.settings.ollama_model, prompt, WORLD_PLAN_SCHEMA)))
+        errors: list[str] = []
+        baseline = score_plan(plan)
+        for provider, call in providers:
+            try:
+                if activity:
+                    activity(f"{provider.title()} • revising plan from critic feedback")
+                candidate = _extract_json(call().text)
+                candidate_score = score_plan(candidate)
+                if candidate_score + 8.0 < baseline:
+                    raise ValueError(f"revision score {candidate_score:.2f} below baseline floor {baseline - 8.0:.2f}")
+                if activity:
+                    activity(f"{provider.title()} • revision accepted • score={candidate_score:.2f}")
+                return candidate, provider, errors
+            except Exception as exc:
+                errors.append(f"{provider}: {exc}")
+                if activity:
+                    activity(f"{provider.title()} • revision failed: {exc}")
+        return plan, None, errors
