@@ -3,7 +3,7 @@ name: build-windows
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, v2-serious-build]
     tags: ['v*']
 
 concurrency:
@@ -18,10 +18,10 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install dependencies
-        run: python -m pip install --upgrade pip && pip install -r requirements.txt pyinstaller
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt pyinstaller==6.22.2
 
       - name: Test
         run: python -m pytest -q
@@ -36,7 +36,10 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path 'dist/WorldSmithAI.exe')) { throw 'WorldSmithAI.exe was not created' }
-          Get-Item 'dist/WorldSmithAI.exe' | Select-Object FullName, Length
+          $item = Get-Item 'dist/WorldSmithAI.exe'
+          if ($item.Length -lt 100000) { throw "WorldSmithAI.exe looks unexpectedly small: $($item.Length) bytes" }
+          Get-FileHash 'dist/WorldSmithAI.exe' -Algorithm SHA256
+          $item | Select-Object FullName, Length
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
