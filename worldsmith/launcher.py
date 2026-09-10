@@ -10,12 +10,12 @@ from worldsmith.aaa import AAAWorldSmithWindow
 from worldsmith.assets.appearance import BlockAppearanceCache
 from worldsmith.assets.textured_preview import TexturedLiveWorldPreview
 from worldsmith.async_build import build_plan_async
-from worldsmith.generation.advanced_builder import AdvancedWorldBuilder
+from worldsmith.generation.production_builder import ProductionWorldBuilder
 from worldsmith.project_ui import install_project_menu
 
 
-# Install the AAA pipeline once for all supported launch paths.
-app_module.WorldBuilder = AdvancedWorldBuilder
+# Canonical runtime wiring: every supported launch path uses the production builder.
+app_module.WorldBuilder = ProductionWorldBuilder
 AAAWorldSmithWindow.build_plan = build_plan_async
 aaa_module.LiveWorldPreview = TexturedLiveWorldPreview
 _appearance_cache = BlockAppearanceCache()
