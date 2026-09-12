@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from .launcher import main
-
+from .gui_main import main
 
 if __name__ == "__main__":
     raise SystemExit(main())
